@@ -1,11 +1,13 @@
 import torch as T
 from .base import TaskDataTransform
-from .utils import assert_keys_in_dict, MAGIC
+from .utils import assert_keys_in_dict, MAGIC, debug
 from . import utils
 
 from torch.utils.data import random_split
 from abc import ABC, abstractmethod
 import math
+
+DEBUG = False
 
 class NoTask(TaskDataTransform):
     def __init__(self, dataset, parameter):
@@ -106,7 +108,8 @@ class IncrementalClassification(SeqTask):
         for i in range(1,self.segments):
             self.comparison.append((i-1, i))
             self.data_plan[i].extend(self.data_plan[i-1])
-
+        if debug and DEBUG:
+            print(i,self.data_plan[i][:10])
 
 class CombineClassification(IncrementalClassification):
     def _post_process(self):

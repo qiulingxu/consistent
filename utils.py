@@ -23,6 +23,7 @@ if "INIT_ONCE" not in globals():
     config["task"] = "classification"
     config["dataset"] = "cifar10"
     device = "cuda"
+    debug = True
     set_dataset()
 
 class PytorchModeWrap(object):

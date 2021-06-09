@@ -4,7 +4,9 @@ import torch as T
 import copy
 
 from .base import Task,TaskDataTransform, EvalBase
-from .utils import log, device, get_key_default, PytorchModeWrap as PMW
+from .utils import log, device, get_key_default, debug, PytorchModeWrap as PMW
+
+DEBUG = True
 
 def classifier_perf_metric(model, test_data):
     model = model.to(device)
@@ -20,7 +22,7 @@ def classifier_perf_metric(model, test_data):
         corr = T.eq(y_pred, y).float()
         tot_corr += T.sum(corr)
         cnt += list(corr.shape)[0]
-    return tot_corr.numpy()/cnt
+    return tot_corr.cpu().numpy()/cnt
 
 class ConvergeImprovement():
     def __init__(self, ratio=1e-3):
@@ -29,13 +31,15 @@ class ConvergeImprovement():
         self.avg_growth = 1000
         self.decay_rate = 0.5
 
-    def __call__(self, score):
+    def __call__(self, score, step):
         if self.max_score is None:
             self.max_score = score
             self.avg_growth = 1
         else:
             improve_ratio = (score - self.max_score) / self.max_score
             self.avg_growth = self.avg_growth*self.decay_rate + improve_ratio * (1-self.decay_rate)
+        if debug and DEBUG:
+            print("growth in step {} is {}".format(step,self.avg_growth))
         if self.avg_growth < self.ratio:
             return True
         else:
@@ -50,6 +54,7 @@ class VanillaTrain(Task):
         self.taskdata  = taskdata
         self.process_parameter(parameter)
         self.converge = ConvergeImprovement(1e-3)
+        self.evaluator = evalulator
         self.iscopy = get_key_default(parameter, "iscopy", True, type=bool)
         self.device = get_key_default(parameter, "device", device, type=str)
     def process_parameter(self, parameter):
@@ -82,7 +87,7 @@ class VanillaTrain(Task):
                         prev_models=self.prev_models,\
                         **karg)
             self.evaluator.eval(model)    
-            self.evaluator.getincorr()
+            self.evaluator.inconsistency()
             step += 1
             tot_step += 1
 
@@ -92,14 +97,17 @@ class VanillaTrain(Task):
             curr_train_data = self.taskdata.data_plan_train[k]
             curr_test_data = self.taskdata.data_plan_test[k]
             curr_val_data = self.taskdata.data_plan_val[k]
+            if debug and DEBUG:
+                print("Data num for train {}, test {} and val {}".\
+                    format(len(curr_train_data), len(curr_test_data), len(curr_val_data)))
             curr_train_data_loader = self.process_data(curr_train_data, mode="train")
             curr_test_data_loader = self.process_data(curr_test_data, mode="eval")
             curr_val_data_loader = self.process_data(curr_val_data, mode ="eval")
             step = 0
             if self.granularity == "converge":
                 while True:
-                    train_loop(model, curr_train_data)
-                    sc = self.perf_metric(model, self.curr_val_data_loader)                
+                    train_loop(model, curr_train_data_loader)
+                    sc = self.perf_metric(model, curr_val_data_loader)                
                     if self.converge(sc, step):
                         log("Task {} converges after {} steps".format(k, step))
                         break
@@ -110,6 +118,10 @@ class VanillaTrain(Task):
                 self.prev_models = curr_model
             else:
                 self.prev_models.append(model)
+            self.eval(model=model,
+                        dataset=curr_test_data_loader, \
+                        prev_models=self.prev_models,\
+                        **karg)
     #def converge(self, criterion):
     #    return True
 
@@ -117,6 +129,13 @@ class VanillaTrain(Task):
     def train(self, model, dataset, prev_models, **karg):
         self._train(model, dataset, prev_models, device=self.device, **karg)
     
+    def eval(self, model, dataset, prev_models, **karg):
+        self._eval(model, dataset, prev_models, device=self.device, **karg)
+    
     @abstractmethod
     def _train(self, model, dataset, prev_models,  **karg):
+        pass
+
+    @abstractmethod
+    def _eval(self, model, dataset, prev_models,  **karg):
         pass
