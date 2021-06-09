@@ -1,0 +1,1 @@
+This is the consistent learning. We hope to divide the task into several stages, to approximate the different real scenarios  of AI system developments. And evaluatee the potential problem and solution for it.
