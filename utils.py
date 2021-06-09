@@ -19,8 +19,21 @@ def set_dataset():
 
 if "INIT_ONCE" not in globals():
     INIT_ONCE = True
-    config = object()
+    config = {}
     config["task"] = "classification"
     config["dataset"] = "cifar10"
     device = "gpu"
     set_dataset()
+
+class PytorchModeWrap(object):
+    def __init__(self, model, training):
+        self.training = training
+        self.model = model 
+
+    def __enter__(self):
+        self.curr_mode = self.model.training
+        self.model.train(self.training)
+        return self
+    
+    def __exit__(self):
+        self.model.train(self.curr_modee)

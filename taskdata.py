@@ -1,7 +1,7 @@
 import torch as T
 from .base import TaskDataTransform
 from .utils import assert_keys_in_dict, MAGIC
-import .utils
+from . import utils
 
 from torch.utils.data import random_split
 from abc import ABC, abstractmethod
@@ -28,6 +28,7 @@ class SeqTask(TaskDataTransform):
         self.dataset = dataset
         self.parameter = parameter
         self._proc_parameter(parameter)
+        self.gen_data_plan()
 
     def gen_data_plan(self):
         self.data_plan = {}
@@ -43,7 +44,7 @@ class SeqTask(TaskDataTransform):
     def _post_process(self):
         self.order = list(sorted(self.data_plan.keys()))
         self.comparison = []
-        for i in range(1, len(self.segments)):
+        for i in range(1, self.len()):
             self.comparison.append((self.order[i-1], self.order[i]))
     
     def _split_data(self,):
@@ -80,7 +81,7 @@ class SeqTask(TaskDataTransform):
     def get_plan(self):
         return self.data_plan        
 
-def IncrementalClassification(SeqTask):
+class IncrementalClassification(SeqTask):
     def _proc_parameter(self, parameter):
         if "labelmap" not in parameter:
             assert_keys_in_dict("segments", parameter)
@@ -106,7 +107,7 @@ def IncrementalClassification(SeqTask):
             self.data_plan[i].extend(self.data_plan[i-1])
 
 
-def CombineClassification(IncrementalClassification):
+class CombineClassification(IncrementalClassification):
     def _post_process(self):
         self.combine_key = self.segments
         self.order = list(sorted(self.data_plan.keys()))

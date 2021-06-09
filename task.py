@@ -1,7 +1,8 @@
+from math import inf
 import torch as T
 
 from .base import Task,TaskDataTransform, EvalBase
-from .utils import log, device
+from .utils import log, device, PytorchModeWrap as PMW
 
 def classifier_perf_metric(model, test_data):
     model = model.to(device)
@@ -19,6 +20,25 @@ def classifier_perf_metric(model, test_data):
         cnt += list(corr.shape)[0]
     return tot_corr.numpy()/cnt
 
+class ConvergeImprovement():
+    def __init__(self, ratio=1e-3):
+        self.ratio = ratio
+        self.max_score = None
+        self.avg_growth = 1000
+        self.decay_rate = 0.5
+
+    def __call__(self, score):
+        if self.max_score is None:
+            self.max_score = score
+            self.avg_growth = 1
+        else:
+            improve_ratio = (score - self.max_score) / self.max_score
+            self.avg_growth = self.avg_growth*self.decay_rate + improve_ratio * (1-self.decay_rate)
+        if self.avg_growth < self.ratio:
+            return True
+        else:
+            return False
+
 class VanillaTrain(Task):
     def __init__(self, parameter:dict, granularity, evalulator:EvalBase, taskdata:TaskDataTransform, task_prefix):
         
@@ -27,6 +47,7 @@ class VanillaTrain(Task):
         self.task_prefix = task_prefix
         self.taskdata  = taskdata
         self.process_parameter(parameter)
+        self.converge = ConvergeImprovement(1e-3)
 
     def process_parameter(self, parameter):
         if self.granularity == "converge":
@@ -48,11 +69,15 @@ class VanillaTrain(Task):
         return dataset
 
     
-    def controlled_train(self, model):
+    def controlled_train(self, model, *arg, **karg):
 
         def train_loop(model, traindata,):
             nonlocal step, tot_step
-            self.train(model, traindata)
+            with PMW(model, training=True):
+                self.train(model, traindata, *arg, **karg)
+            
+            self.evaluator.eval(model)    
+            self.evaluator.getincorr()
             step += 1
             tot_step += 1
 
@@ -61,24 +86,28 @@ class VanillaTrain(Task):
         for k in self.taskdata.order:
             curr_train_data = self.taskdata.data_plan_train[k]
             curr_test_data = self.taskdata.data_plan_test[k]
-            curr_train_data = self.process_data(curr_train_data)
-            curr_test_data = self.process_data(curr_test_data)
+            curr_val_data = self.taskdata.data_plan_val[k]
+            curr_train_data_loader = self.process_data(curr_train_data)
+            curr_test_data_loader = self.process_data(curr_test_data)
+            curr_val_data_loader = self.process_data(curr_val_data)
             step = 0
             if self.granularity == "converge":
                 while True:
                     train_loop(model, curr_train_data)
-                    sc = self.perf_metric(model, curr_test_data)                
+                    sc = self.perf_metric(model, self.curr_val_data_loader)                
                     if self.converge(sc, step):
                         log("Task {} converges after {} steps".format(k, step))
                         break
             else:
                 assert False, "Implement other time slice definition"
 
-    @abstractmethod           
-    def converge(self, criterion):
-        return True
+    #def converge(self, criterion):
+    #    return True
+
+    
+    def train(self, model, dataset, prev_models, *arg, **karg):
+        self._train(model, dataset, prev_models, *arg, **karg)
     
     @abstractmethod
-    def train(self, model, dataset, prev_models):
+    def _train(self, model, dataset, prev_models, *arg, **karg):
         pass
-

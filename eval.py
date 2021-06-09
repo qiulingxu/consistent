@@ -5,9 +5,8 @@ import numpy as np
 from .base import *
 
 class EvalProgressPerSample():
-    def __init__(self, model: nn.Module, data : FixData, metric: nn.Module, device, max_step = 10000):
+    def __init__(self, data : FixData, metric: nn.Module, device, max_step = 10000):
         super(EvalProgressPerSample, self).__init__()
-        self.model = model.to(device)
         self.metric = metric.to(device)
         self.data = data
         self.max_step = max_step
@@ -15,22 +14,23 @@ class EvalProgressPerSample():
         self.hist_version= np.zeros(shape=(self.len, self.max_step), dtype = bool)
         self.curr_step = 0
         self.device = device
-    def eval(self,):
+    def eval(self, model):
+        model = model.to(self.device)
         mode = self.model.training
-        self.model.eval()
+        model.eval()
         for dp in self.data.get_iterator():
             input = [i.to(self.device) for i in dp["input"]]
             dp = {k: i.to(self.device) for k, i in dp.items() if k != "input"}
-            output = self.model(*input)
+            output = model(*input)
             score = self.metric(output, dp)
             idx = dp["idx"]
             # in batch idx
             for ib_idx, e_idx in enumerate(idx):
                 e_idx = int(e_idx)
                 self.hist_version[e_idx, self.curr_step] = score[ib_idx]
-        self.model.train(mode)
+        model.train(mode)
         self.curr_step += 1
-    def getincorr(self):
+    def inconsistency(self):
         cnt = 0
 
         for i in range(self.len):
@@ -38,9 +38,10 @@ class EvalProgressPerSample():
             for j in range(1,self.curr_step):
                 
                 if f < self.hist_version[i,j]:
-                    print("sample %d" % i)
+                    #print("sample %d" % i)
                     cnt += 1
                     break
                 f = max(f, self.hist_version[i,j])
-        print(cnt*1.0/self.len)
+        #print()
+        return cnt*1.0/self.len
         
