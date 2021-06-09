@@ -54,3 +54,5 @@ class Task(ABC):
     @abstractmethod
     def controlled_train(self, Model, dataset):
         pass
+
+EvalBase = object

@@ -1,8 +1,9 @@
 import torch as T
 from .base import TaskDataTransform
-from .utils import assert_keys_in_dict
+from .utils import assert_keys_in_dict, MAGIC
 import .utils
 
+from torch.utils.data import random_split
 from abc import ABC, abstractmethod
 import math
 
@@ -10,6 +11,7 @@ class NoTask(TaskDataTransform):
     def __init__(self, dataset, parameter):
         self.dataset = dataset
         self.parameter = parameter
+        self.order = []
         self.gen_data_plan(parameter)
 
     def gen_data_plan(self, parameter):
@@ -35,6 +37,7 @@ class SeqTask(TaskDataTransform):
                 self.data_plan[idx] = []
             self.data_plan[idx].append(dp)
         self._post_process()
+        self._split_data()
         #for k in self.data_plan.keys():
         #    self.data_plan[k] = T.stack(self.data_plan[k],dim=0)
     def _post_process(self):
@@ -42,6 +45,25 @@ class SeqTask(TaskDataTransform):
         self.comparison = []
         for i in range(1, len(self.segments)):
             self.comparison.append((self.order[i-1], self.order[i]))
+    
+    def _split_data(self,):
+        self.split_fold = 10
+        self.data_plan_train = {}
+        self.data_plan_test = {}
+        self.data_plan_val = {}
+        for k in self.order:
+            l = len(self.data_plan[k])
+            self.data_plan_train[k] = []
+            self.data_plan_test[k] = []
+            self.data_plan_val[k] = []
+            for idx, dp in enumerate(l):
+                slice = idx%self.split_fold 
+                if slice in [0,1]:
+                    self.data_plan_test[k].append(dp)
+                elif slice in [2]:
+                    self.data_plan_val[k].append(dp)
+                else:
+                    self.data_plan_train[k].append(dp)
 
     def _proc_parameter(self, parameter):
         return None
@@ -84,4 +106,13 @@ def IncrementalClassification(SeqTask):
             self.data_plan[i].extend(self.data_plan[i-1])
 
 
-def CombineClassification()
+def CombineClassification(IncrementalClassification):
+    def _post_process(self):
+        self.combine_key = self.segments
+        self.order = list(sorted(self.data_plan.keys()))
+        self.data_plan[self.combine_key] = []
+        self.order.append(self.combine_key)
+        self.comparison = []
+        for i in range(0,self.segments):
+            self.comparison.append((i, self.combine_key))
+            self.data_plan[self.combine_key].extend(self.data_plan[i])

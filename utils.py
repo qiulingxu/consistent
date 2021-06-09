@@ -1,4 +1,8 @@
 
+MAGIC = 66
+
+def log(*argv, **karv):
+    print(*argv, **karv)
 
 def assert_keys_in_dict(keys, dct):
     for key in keys:
@@ -18,4 +22,5 @@ if "INIT_ONCE" not in globals():
     config = object()
     config["task"] = "classification"
     config["dataset"] = "cifar10"
+    device = "gpu"
     set_dataset()
