@@ -57,7 +57,7 @@ class SeqTask(TaskDataTransform):
             self.data_plan_train[k] = []
             self.data_plan_test[k] = []
             self.data_plan_val[k] = []
-            for idx, dp in enumerate(l):
+            for idx, dp in enumerate(self.data_plan[k]):
                 slice = idx%self.split_fold 
                 if slice in [0,1]:
                     self.data_plan_test[k].append(dp)
@@ -84,12 +84,13 @@ class SeqTask(TaskDataTransform):
 class IncrementalClassification(SeqTask):
     def _proc_parameter(self, parameter):
         if "labelmap" not in parameter:
-            assert_keys_in_dict("segments", parameter)
+            assert_keys_in_dict(["segments"], parameter)
             self.segments = parameter["segments"]
             self.class_num = utils.config["CLASS_NUM"]
             self.class_per_seg = math.ceil(self.class_num / self.segments)
             def map_to_task(label):
                 return label // self.class_per_seg
+            self.labelmap = {}
             for i in range(self.class_num):
                 self.labelmap[i] = map_to_task(i)
         else:

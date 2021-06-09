@@ -22,7 +22,7 @@ if "INIT_ONCE" not in globals():
     config = {}
     config["task"] = "classification"
     config["dataset"] = "cifar10"
-    device = "gpu"
+    device = "cuda"
     set_dataset()
 
 class PytorchModeWrap(object):
@@ -35,5 +35,16 @@ class PytorchModeWrap(object):
         self.model.train(self.training)
         return self
     
-    def __exit__(self):
-        self.model.train(self.curr_modee)
+    def __exit__(self,exception_type, exception_value, traceback):
+        self.model.train(self.curr_mode)
+
+def get_key_default(dct, key, default, range = None, type = None):
+    if key in dct:
+        val = dct[key]
+    else:
+        val = default
+    if range is not None:
+        assert val in range, "Value {} is not in Range {}".format(val, range)
+    if type is not None:
+        assert isinstance(val, type), "Value {} is not Typr {}".format(val, type)
+    return val

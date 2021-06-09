@@ -1,8 +1,10 @@
+from abc import ABC, abstractmethod
 from math import inf
 import torch as T
+import copy
 
 from .base import Task,TaskDataTransform, EvalBase
-from .utils import log, device, PytorchModeWrap as PMW
+from .utils import log, device, get_key_default, PytorchModeWrap as PMW
 
 def classifier_perf_metric(model, test_data):
     model = model.to(device)
@@ -48,7 +50,8 @@ class VanillaTrain(Task):
         self.taskdata  = taskdata
         self.process_parameter(parameter)
         self.converge = ConvergeImprovement(1e-3)
-
+        self.iscopy = get_key_default(parameter, "iscopy", True, type=bool)
+        self.device = get_key_default(parameter, "device", device, type=str)
     def process_parameter(self, parameter):
         if self.granularity == "converge":
             if "perf_metric" in parameter:
@@ -69,13 +72,15 @@ class VanillaTrain(Task):
         return dataset
 
     
-    def controlled_train(self, model, *arg, **karg):
+    def controlled_train(self, model, **karg):
 
         def train_loop(model, traindata,):
             nonlocal step, tot_step
             with PMW(model, training=True):
-                self.train(model, traindata, *arg, **karg)
-            
+                self.train(model = model, \
+                        dataset=traindata, \
+                        prev_models=self.prev_models,\
+                        **karg)
             self.evaluator.eval(model)    
             self.evaluator.getincorr()
             step += 1
@@ -87,9 +92,9 @@ class VanillaTrain(Task):
             curr_train_data = self.taskdata.data_plan_train[k]
             curr_test_data = self.taskdata.data_plan_test[k]
             curr_val_data = self.taskdata.data_plan_val[k]
-            curr_train_data_loader = self.process_data(curr_train_data)
-            curr_test_data_loader = self.process_data(curr_test_data)
-            curr_val_data_loader = self.process_data(curr_val_data)
+            curr_train_data_loader = self.process_data(curr_train_data, mode="train")
+            curr_test_data_loader = self.process_data(curr_test_data, mode="eval")
+            curr_val_data_loader = self.process_data(curr_val_data, mode ="eval")
             step = 0
             if self.granularity == "converge":
                 while True:
@@ -100,14 +105,18 @@ class VanillaTrain(Task):
                         break
             else:
                 assert False, "Implement other time slice definition"
-
+            if self.iscopy:
+                curr_model = copy.deepcopy(model)
+                self.prev_models = curr_model
+            else:
+                self.prev_models.append(model)
     #def converge(self, criterion):
     #    return True
 
     
-    def train(self, model, dataset, prev_models, *arg, **karg):
-        self._train(model, dataset, prev_models, *arg, **karg)
+    def train(self, model, dataset, prev_models, **karg):
+        self._train(model, dataset, prev_models, device=self.device, **karg)
     
     @abstractmethod
-    def _train(self, model, dataset, prev_models, *arg, **karg):
+    def _train(self, model, dataset, prev_models,  **karg):
         pass
