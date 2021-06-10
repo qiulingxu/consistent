@@ -29,7 +29,7 @@ class ConvergeImprovement():
         self.ratio = ratio
         self.max_score = None
         self.avg_growth = 1000
-        self.decay_rate = 0.5
+        self.decay_rate = 0.7
 
     def __call__(self, score, step):
         if self.max_score is None:
@@ -38,6 +38,7 @@ class ConvergeImprovement():
         else:
             improve_ratio = (score - self.max_score) / self.max_score
             self.avg_growth = self.avg_growth*self.decay_rate + improve_ratio * (1-self.decay_rate)
+            self.max_score = max(score, self.max_score)
         if debug and DEBUG:
             print("growth in step {} is {}".format(step,self.avg_growth))
         if self.avg_growth < self.ratio:
@@ -53,8 +54,9 @@ class VanillaTrain(Task):
         self.task_prefix = task_prefix
         self.taskdata  = taskdata
         self.process_parameter(parameter)
-        self.converge = ConvergeImprovement(1e-3)
+        
         self.evaluator = evalulator
+        self.ipv_threshold = get_key_default(parameter, "ipv_threshold", 1e-2, type=float)
         self.iscopy = get_key_default(parameter, "iscopy", True, type=bool)
         self.device = get_key_default(parameter, "device", device, type=str)
     def process_parameter(self, parameter):
@@ -81,13 +83,13 @@ class VanillaTrain(Task):
 
         def train_loop(model, traindata,):
             nonlocal step, tot_step
+            if self.granularity == "converge":
+                karg["epoch"] = step
             with PMW(model, training=True):
                 self.train(model = model, \
                         dataset=traindata, \
                         prev_models=self.prev_models,\
                         **karg)
-            self.evaluator.eval(model)    
-            self.evaluator.inconsistency()
             step += 1
             tot_step += 1
 
@@ -105,6 +107,7 @@ class VanillaTrain(Task):
             curr_val_data_loader = self.process_data(curr_val_data, mode ="eval")
             step = 0
             if self.granularity == "converge":
+                self.converge = ConvergeImprovement(self.ipv_threshold)
                 while True:
                     train_loop(model, curr_train_data_loader)
                     sc = self.perf_metric(model, curr_val_data_loader)                
@@ -113,6 +116,8 @@ class VanillaTrain(Task):
                         break
             else:
                 assert False, "Implement other time slice definition"
+            self.evaluator.eval(model)    
+            print("Measure",self.evaluator.measure())
             if self.iscopy:
                 curr_model = copy.deepcopy(model)
                 self.prev_models = curr_model

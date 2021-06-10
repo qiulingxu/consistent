@@ -29,7 +29,7 @@ class EvalProgressPerSample():
                     e_idx = int(e_idx)
                     self.hist_version[e_idx, self.curr_step] = score[ib_idx]
         self.curr_step += 1
-    def inconsistency(self):
+    def measure(self):
         cnt = 0
 
         for i in range(self.len):
@@ -42,5 +42,5 @@ class EvalProgressPerSample():
                     break
                 f = max(f, self.hist_version[i,j])
         #print()
-        return cnt*1.0/self.len
+        return {"inconsist":cnt*1.0/self.len}
         
