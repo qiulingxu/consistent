@@ -56,7 +56,7 @@ class VanillaTrain(Task):
         self.process_parameter(parameter)
         
         self.evaluator = evalulator
-        self.ipv_threshold = get_key_default(parameter, "ipv_threshold", 1e-2, type=float)
+        self.ipv_threshold = get_key_default(parameter, "ipv_threshold", 1e-3, type=float)
         self.iscopy = get_key_default(parameter, "iscopy", True, type=bool)
         self.device = get_key_default(parameter, "device", device, type=str)
     def process_parameter(self, parameter):
