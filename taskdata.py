@@ -1,11 +1,12 @@
 import torch as T
-from .base import TaskDataTransform
+from .base import TaskDataTransform, EvalBase
 from .utils import assert_keys_in_dict, MAGIC, debug
 from . import utils
 
 from torch.utils.data import random_split
 from abc import ABC, abstractmethod
 import math
+import copy
 
 DEBUG = False
 
@@ -25,6 +26,17 @@ class NoTask(TaskDataTransform):
     def get_plan(self):
         return self.data_plan
 
+    def fill_evaluator(self, evaluator: EvalBase):
+        return super().fill_evaluator(evaluator)
+
+    @abstractmethod
+    def _split_data(self):
+        return True
+
+    @abstractmethod
+    def get_full_data():
+        return []
+
 class SeqTask(TaskDataTransform):
     def __init__(self, dataset, parameter):
         self.dataset = dataset
@@ -40,7 +52,7 @@ class SeqTask(TaskDataTransform):
                 self.data_plan[idx] = []
             self.data_plan[idx].append(dp)
         self._post_process()
-        self._split_data()
+        self.split_data()
         #for k in self.data_plan.keys():
         #    self.data_plan[k] = T.stack(self.data_plan[k],dim=0)
     def _post_process(self):
@@ -49,24 +61,30 @@ class SeqTask(TaskDataTransform):
         for i in range(1, self.len()):
             self.comparison.append((self.order[i-1], self.order[i]))
     
-    def _split_data(self,):
-        self.split_fold = 10
+    def split_data(self,):
         self.data_plan_train = {}
         self.data_plan_test = {}
         self.data_plan_val = {}
+        self.split_fold = 10
+        self.split_num = [2,1,7]
         for k in self.order:
             l = len(self.data_plan[k])
-            self.data_plan_train[k] = []
-            self.data_plan_test[k] = []
-            self.data_plan_val[k] = []
-            for idx, dp in enumerate(self.data_plan[k]):
-                slice = idx%self.split_fold 
-                if slice in [0,1]:
-                    self.data_plan_test[k].append(dp)
-                elif slice in [2]:
-                    self.data_plan_val[k].append(dp)
-                else:
-                    self.data_plan_train[k].append(dp)
+            self.data_plan_test[k],self.data_plan_val[k],self.data_plan_train[k] \
+                = self._split_data(self.data_plan[k])
+
+    def _split_data(self,data):
+        split_num = copy.copy(self.split_num)
+        for i in range(1, self.slices):
+            split_num[i] += split_num[i-1]
+        assert split_num[-1] == self.split_fold
+        
+        lsts = [[] for i in range(self.slices)]
+        for idx, dp in enumerate(data):
+            slice = idx%self.split_fold 
+            for i in range(self.slices):
+                if slice < split_num[i]:
+                    lsts[i].append(dp)
+                    break
 
     def _proc_parameter(self, parameter):
         return None
