@@ -95,8 +95,5 @@ class FixDataMemoryBatchClassification(FixDataMemoryBatch):
 
 
 
-
-
-
 if __name__=="__main__":
     pass
