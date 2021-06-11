@@ -44,6 +44,10 @@ class SeqTask(TaskDataTransform):
         self._proc_parameter(parameter)
         self.gen_data_plan()
 
+    def datafold(self,):
+        self.split_fold = 10
+        self.split_num = [2,1,7]
+
     def gen_data_plan(self):
         self.data_plan = {}
         for dp in self.dataset:
@@ -65,12 +69,11 @@ class SeqTask(TaskDataTransform):
         self.data_plan_train = {}
         self.data_plan_test = {}
         self.data_plan_val = {}
-        self.split_fold = 10
-        self.split_num = [2,1,7]
         for k in self.order:
             l = len(self.data_plan[k])
             self.data_plan_test[k],self.data_plan_val[k],self.data_plan_train[k] \
                 = self._split_data(self.data_plan[k])
+
 
     def _split_data(self,data):
         split_num = copy.copy(self.split_num)
@@ -86,6 +89,13 @@ class SeqTask(TaskDataTransform):
                     lsts[i].append(dp)
                     break
 
+    def fill_evaluator(self, evaluator: EvalBase, prefix=""):
+        for k in self.order:
+            name = prefix+str(k)
+            train, teest 
+            evaluator.add_data()
+
+
     def _proc_parameter(self, parameter):
         return None
 
@@ -99,7 +109,7 @@ class SeqTask(TaskDataTransform):
         return list(self.data_plan[idx].shape)[0]
 
     def get_plan(self):
-        return self.data_plan        
+        return self.data_plan       
 
 class IncrementalClassification(SeqTask):
     def _proc_parameter(self, parameter):
