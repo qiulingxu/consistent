@@ -37,7 +37,7 @@ class NoTask(TaskDataTransform):
     def get_full_data():
         return []
 
-class SeqTask(TaskDataTransform):
+class SeqTaskData(TaskDataTransform):
     def __init__(self, dataset, parameter):
         self.dataset = dataset
         self.parameter = parameter
@@ -55,6 +55,7 @@ class SeqTask(TaskDataTransform):
             if idx not in self.data_plan:
                 self.data_plan[idx] = []
             self.data_plan[idx].append(dp)
+        self.fill_evaluator("pertask_")
         self._post_process()
         self.split_data()
         #for k in self.data_plan.keys():
@@ -92,8 +93,9 @@ class SeqTask(TaskDataTransform):
     def fill_evaluator(self, evaluator: EvalBase, prefix=""):
         for k in self.order:
             name = prefix+str(k)
-            train, teest 
-            evaluator.add_data()
+            test, val, train = self._split_data(self.data_plan[k]) 
+            for suffix, data in (("test",test), ("val",val), ("train", train)):
+                evaluator.add_data(name+suffix, data)
 
 
     def _proc_parameter(self, parameter):
@@ -111,7 +113,7 @@ class SeqTask(TaskDataTransform):
     def get_plan(self):
         return self.data_plan       
 
-class IncrementalClassification(SeqTask):
+class ClassificationTaskData(SeqTaskData):
     def _proc_parameter(self, parameter):
         if "labelmap" not in parameter:
             assert_keys_in_dict(["segments"], parameter)
@@ -125,21 +127,31 @@ class IncrementalClassification(SeqTask):
                 self.labelmap[i] = map_to_task(i)
         else:
             self.labelmap = parameter["labelmap"]
-            self.segments = len(self.labelmap)
+            self.segments = len(set(self.labelmap.values()))
+        self._gen_task_mask()
         return True
+    def _gen_task_mask(self):
+        self.task_classes = {}
+        for i in range(self.segments):
+            for j in range(self.class_num):
+                if self.labelmap[j] == i:
+                    self.task_classes[i].append(j)
     def _assign_elem_id(self, dp):
         _, label = dp
         return self.labelmap[label]
+
+class IncrementalClassificationData(ClassificationTaskData):
     def _post_process(self):
         self.order = list(sorted(self.data_plan.keys()))
         self.comparison = []
         for i in range(1,self.segments):
             self.comparison.append((i-1, i))
             self.data_plan[i].extend(self.data_plan[i-1])
+            self.task_classes[i] = self.task_classes[i-1] + self.task_classes[i]
         if debug and DEBUG:
             print(i,self.data_plan[i][:10])
 
-class CombineClassification(IncrementalClassification):
+class CombineClassificationData(ClassificationTaskData):
     def _post_process(self):
         self.combine_key = self.segments
         self.order = list(sorted(self.data_plan.keys()))
@@ -149,3 +161,4 @@ class CombineClassification(IncrementalClassification):
         for i in range(0,self.segments):
             self.comparison.append((i, self.combine_key))
             self.data_plan[self.combine_key].extend(self.data_plan[i])
+            self.task_classes[self.combine_key] += self.task_classes[i]

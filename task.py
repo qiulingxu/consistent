@@ -1,27 +1,31 @@
 from abc import ABC, abstractmethod
 from math import inf
 import torch as T
+import torch.nn as nn
 import copy
 
 from .base import Task,TaskDataTransform, EvalBase
 from .utils import log, device, get_key_default, debug, PytorchModeWrap as PMW
+from .net import ClassificationMask
+from .taskdata import ClassificationTaskData
 
 DEBUG = True
 
 def classifier_perf_metric(model, test_data):
     model = model.to(device)
-    model.eval()
-    tot_corr = 0
-    cnt = 0
-    for dp in test_data:
-        x, y = dp
-        x = x.to(device)
-        y = y.to(device)
-        output = model(x)
-        y_pred = T.argmax(output, dim=1)
-        corr = T.eq(y_pred, y).float()
-        tot_corr += T.sum(corr)
-        cnt += list(corr.shape)[0]
+    with PMW(model, training = False):
+        tot_corr = 0
+        cnt = 0
+        for dp in test_data:
+            x, y = dp
+            y = model.process_labels(y)
+            x = x.to(device)
+            y = y.to(device)
+            output = model(x)
+            y_pred = T.argmax(output, dim=1)
+            corr = T.eq(y_pred, y).float()
+            tot_corr += T.sum(corr)
+            cnt += list(corr.shape)[0]
     return tot_corr.cpu().numpy()/cnt
 
 class ConvergeImprovement():
@@ -109,6 +113,7 @@ class VanillaTrain(Task):
             if self.granularity == "converge":
                 self.converge = ConvergeImprovement(self.ipv_threshold)
                 while True:
+                    model = self.model_process(model, k, step)
                     train_loop(model, curr_train_data_loader)
                     sc = self.perf_metric(model, curr_val_data_loader)                
                     if self.converge(sc, step):
@@ -130,6 +135,8 @@ class VanillaTrain(Task):
     #def converge(self, criterion):
     #    return True
 
+    def model_process(self, model: nn.Module, key:str, step:int):
+        return self._model_process(self, model, key, step)
     
     def train(self, model, dataset, prev_models, **karg):
         self._train(model, dataset, prev_models, device=self.device, **karg)
@@ -141,6 +148,19 @@ class VanillaTrain(Task):
     def _train(self, model, dataset, prev_models,  **karg):
         pass
 
+    def _model_process(self, model: nn.Module, key, step):
+        return model
+
     @abstractmethod
     def _eval(self, model, dataset, prev_models,  **karg):
         pass
+
+class ClassificationTrain(VanillaTrain):
+    def __init__(self, parameter:dict, granularity, evalulator:EvalBase, taskdata:ClassificationTaskData, task_prefix):
+        super().__init__(parameter, granularity,evalulator,taskdata, task_prefix)
+
+    def model_process(self, model: ClassificationMask, key:str, step:int):
+        if step == 0:
+            model.sublabels(self.taskdata.taskclasses[key])
+        return self._model_process(model, key, step)
+    
