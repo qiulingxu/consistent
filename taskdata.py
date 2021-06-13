@@ -44,24 +44,31 @@ class SeqTaskData(TaskDataTransform):
         self._proc_parameter(parameter)
         self.gen_data_plan()
 
-    def datafold(self,):
+    def define_datafold(self,):
+        """Overide this function to redefine the datafold rule"""
         self.split_fold = 10
         self.split_num = [2,1,7]
+        self.slices = len(self.split_num)
+
+    def define_order(self):
+        """Overide this function to redefine the order"""
+        self.order = list(sorted(self.data_plan.keys()))
 
     def gen_data_plan(self):
+        self.define_datafold()
         self.data_plan = {}
         for dp in self.dataset:
             idx = self._assign_elem_id(dp)
             if idx not in self.data_plan:
                 self.data_plan[idx] = []
             self.data_plan[idx].append(dp)
+        self.define_order()
         self.fill_evaluator("pertask_")
         self._post_process()
         self.split_data()
         #for k in self.data_plan.keys():
         #    self.data_plan[k] = T.stack(self.data_plan[k],dim=0)
     def _post_process(self):
-        self.order = list(sorted(self.data_plan.keys()))
         self.comparison = []
         for i in range(1, self.len()):
             self.comparison.append((self.order[i-1], self.order[i]))
@@ -74,10 +81,10 @@ class SeqTaskData(TaskDataTransform):
             l = len(self.data_plan[k])
             self.data_plan_test[k],self.data_plan_val[k],self.data_plan_train[k] \
                 = self._split_data(self.data_plan[k])
-
+        
 
     def _split_data(self,data):
-        split_num = copy.copy(self.split_num)
+        split_num = copy.deepcopy(self.split_num)
         for i in range(1, self.slices):
             split_num[i] += split_num[i-1]
         assert split_num[-1] == self.split_fold
@@ -89,6 +96,7 @@ class SeqTaskData(TaskDataTransform):
                 if slice < split_num[i]:
                     lsts[i].append(dp)
                     break
+        return lsts
 
     def fill_evaluator(self, evaluator: EvalBase, prefix=""):
         for k in self.order:
@@ -131,18 +139,16 @@ class ClassificationTaskData(SeqTaskData):
         self._gen_task_mask()
         return True
     def _gen_task_mask(self):
-        self.task_classes = {}
-        for i in range(self.segments):
-            for j in range(self.class_num):
-                if self.labelmap[j] == i:
-                    self.task_classes[i].append(j)
+        self.task_classes = {i:[] for i in range(self.segments)}
+
+        for j in range(self.class_num):
+            self.task_classes[self.labelmap[j]].append(j)
     def _assign_elem_id(self, dp):
         _, label = dp
         return self.labelmap[label]
 
 class IncrementalClassificationData(ClassificationTaskData):
     def _post_process(self):
-        self.order = list(sorted(self.data_plan.keys()))
         self.comparison = []
         for i in range(1,self.segments):
             self.comparison.append((i-1, i))
@@ -154,7 +160,6 @@ class IncrementalClassificationData(ClassificationTaskData):
 class CombineClassificationData(ClassificationTaskData):
     def _post_process(self):
         self.combine_key = self.segments
-        self.order = list(sorted(self.data_plan.keys()))
         self.data_plan[self.combine_key] = []
         self.order.append(self.combine_key)
         self.comparison = []

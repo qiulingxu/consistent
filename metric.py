@@ -3,13 +3,13 @@ import torch.nn as nn
 from .net import ClassificationMask
 
 class MetricClassification(nn.Module):
-    def __init__(self, model:ClassificationMask):
+    def __init__(self):
         super().__init__()
-        self.model = model
 
-    def forward(self, output: T.Tensor, data: dict):
+
+    def forward(self, output: T.Tensor, data: dict, model:ClassificationMask):
         x, y = data["x"], data["y"]
         assert T.is_tensor(y)
-        y = self.model.process_labels(y)
+        y = model.process_labels(y)
         y_pred = T.argmax(output, dim=1)
         return T.eq(y_pred, y).float()

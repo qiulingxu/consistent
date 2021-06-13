@@ -1,10 +1,10 @@
-from taskdata import SeqTask
 import torch as T
 import torch.nn as nn
 import numpy as np
 
 from .base import *
 from .utils import PytorchModeWrap as PMW
+from .taskdata import SeqTaskData
 
 def order_condition(step, order):
     control, val = order
@@ -24,14 +24,15 @@ class EvalProgressPerSample(EvalBase):
         self.curr_step = 0
         self.device = device
         self.names = []
-        self.process_parameters(**karg)
-        self.orders = []
+        self.orders =  {}
 
-    def process_parameter(**karg):
+        self.process_parameters(**karg)
+
+    def process_parameters(self,**karg):
         pass
 
     def add_data(self, name: str, data: FixData, count_from=0):
-        assert name not in self.key, "duplicate name"
+        assert name not in self.names, "duplicate name"
         self.names.append(name)
         self.data[name] = data
         len = data.len_element() 
@@ -47,7 +48,7 @@ class EvalProgressPerSample(EvalBase):
                     input = [i.to(self.device) for i in dp["input"]]
                     dp = {k: i.to(self.device) for k, i in dp.items() if k != "input"}
                     output = model(*input)
-                    score = self.metric(output, dp)
+                    score = self.metric(output, dp, model)
                     idx = dp["idx"]
                     # in batch idx
                     for ib_idx, e_idx in enumerate(idx):
