@@ -2,6 +2,7 @@ import torch as T
 from .base import TaskDataTransform, EvalBase
 from .utils import assert_keys_in_dict, MAGIC, debug
 from . import utils
+from typing import List, Any, Dict
 
 from torch.utils.data import random_split
 from abc import ABC, abstractmethod
@@ -11,10 +12,11 @@ import copy
 DEBUG = False
 
 class NoTask(TaskDataTransform):
-    def __init__(self, dataset, parameter):
+    def __init__(self, dataset, parameter, evaluator:EvalBase):
         self.dataset = dataset
-        self.parameter = parameter
-        self.order = []
+        self.parameter : Dict[str,Any] = parameter
+        self.order: List[Any] = []
+        self.evaluator = evaluator
         self.gen_data_plan(parameter)
 
     def gen_data_plan(self, parameter):
@@ -34,13 +36,14 @@ class NoTask(TaskDataTransform):
         return True
 
     @abstractmethod
-    def get_full_data():
+    def get_full_data(self,):
         return []
 
 class SeqTaskData(TaskDataTransform):
-    def __init__(self, dataset, parameter):
+    def __init__(self, dataset, parameter, evaluator:EvalBase):
         self.dataset = dataset
         self.parameter = parameter
+        self.evaluator = evaluator
         self._proc_parameter(parameter)
         self.gen_data_plan()
 
@@ -63,7 +66,7 @@ class SeqTaskData(TaskDataTransform):
                 self.data_plan[idx] = []
             self.data_plan[idx].append(dp)
         self.define_order()
-        self.fill_evaluator("pertask_")
+        self.fill_evaluator(self.evaluator,"pertask_")
         self._post_process()
         self.split_data()
         #for k in self.data_plan.keys():
@@ -81,7 +84,7 @@ class SeqTaskData(TaskDataTransform):
             l = len(self.data_plan[k])
             self.data_plan_test[k],self.data_plan_val[k],self.data_plan_train[k] \
                 = self._split_data(self.data_plan[k])
-        
+
 
     def _split_data(self,data):
         split_num = copy.deepcopy(self.split_num)
@@ -103,10 +106,11 @@ class SeqTaskData(TaskDataTransform):
             name = prefix+str(k)
             test, val, train = self._split_data(self.data_plan[k]) 
             for suffix, data in (("test",test), ("val",val), ("train", train)):
-                evaluator.add_data(name+suffix, data)
+                evaluator.add_data(name+suffix, data, batch_size=self.batch_size)
 
 
     def _proc_parameter(self, parameter):
+        self.batch_size = parameter["batch_size"]
         return None
 
     def _assign_elem_id(self, dp):
@@ -137,7 +141,8 @@ class ClassificationTaskData(SeqTaskData):
             self.labelmap = parameter["labelmap"]
             self.segments = len(set(self.labelmap.values()))
         self._gen_task_mask()
-        return True
+        return super()._proc_parameter(parameter)
+        
     def _gen_task_mask(self):
         self.task_classes = {i:[] for i in range(self.segments)}
 
@@ -149,6 +154,7 @@ class ClassificationTaskData(SeqTaskData):
 
 class IncrementalClassificationData(ClassificationTaskData):
     def _post_process(self):
+        print("Into IncrementalClassificationData post process")
         self.comparison = []
         for i in range(1,self.segments):
             self.comparison.append((i-1, i))

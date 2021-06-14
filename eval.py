@@ -1,10 +1,13 @@
+from typing import Dict
 import torch as T
 import torch.nn as nn
 import numpy as np
 
+from typing import Any, List, Dict, Tuple
 from .base import *
 from .utils import PytorchModeWrap as PMW
 from .taskdata import SeqTaskData
+from .evaldata import FixDataMemoryBatchClassification as MBC_FD
 
 def order_condition(step, order):
     control, val = order
@@ -15,23 +18,28 @@ def order_condition(step, order):
 
 class EvalProgressPerSample(EvalBase):
     def __init__(self, metric: nn.Module, device, max_step = 10000, **karg):
-        super(EvalProgressPerSample, self).__init__()
+        super(EvalProgressPerSample, self).__init__(metric, device, max_step)
         self.metric = metric.to(device)
-        self.data = {}
-        self.len = {}
-        self.hist_version = {}
+        self.data = {} # type: Dict [Any, FixData]
+        self.len = {} # type: Dict [Any, int]
+        self.hist_version :Dict[Any, np.ndarray] = {} 
         self.max_step = max_step
         self.curr_step = 0
         self.device = device
-        self.names = []
-        self.orders =  {}
+        self.names: List[Any] = [] # type List[Any] 
+        self.orders:Dict[Any, Tuple[str, Any]] =  {} # type 
 
         self.process_parameters(**karg)
 
     def process_parameters(self,**karg):
         pass
 
-    def add_data(self, name: str, data: FixData, count_from=0):
+    def add_data(self, name:str, data:Iterable[Any], batch_size:int, **kargs):
+        fd = MBC_FD(batch_size=batch_size)
+        fd.feed_data(data)
+        self.add_fix_data(name, fd, **kargs)
+    
+    def add_fix_data(self, name: str, data: FixData, count_from=0):
         assert name not in self.names, "duplicate name"
         self.names.append(name)
         self.data[name] = data

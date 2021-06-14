@@ -136,7 +136,7 @@ class VanillaTrain(Task):
     #    return True
 
     def model_process(self, model: nn.Module, key:str, step:int):
-        return self._model_process(self, model, key, step)
+        return self._model_process(model, key, step)
     
     def train(self, model, dataset, prev_models, **karg):
         self._train(model, dataset, prev_models, device=self.device, **karg)
@@ -159,8 +159,8 @@ class ClassificationTrain(VanillaTrain):
     def __init__(self, parameter:dict, granularity, evalulator:EvalBase, taskdata:ClassificationTaskData, task_prefix):
         super().__init__(parameter, granularity,evalulator,taskdata, task_prefix)
 
-    def model_process(self, model: ClassificationMask, key:str, step:int):
+    def model_process(self, model: nn.Module, key:str, step:int): # type: ignore[override]
         if step == 0:
-            model.sublabels(self.taskdata.taskclasses[key])
+            model.sublabels(self.taskdata.task_classes[key])
         return self._model_process(model, key, step)
     
