@@ -3,3 +3,5 @@
 *.json
 *.pyc
 .vscode/*
+.mypy_cache/*
+*.rtf

@@ -4,6 +4,7 @@ import torch.nn as nn
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Any, List, Dict, Tuple, Optional
+import json
 
 from .base import *
 from .utils import PytorchModeWrap as PMW
@@ -149,6 +150,16 @@ class EvalProgressPerSample(EvalBase):
         rst = {"inconsist_tot":cnt*1.0/tot_cnt, "cnt":tot_cnt, "index":valid_step}
         return rst
 
+    def save(self, filename):
+        _js_file = filename + "_measure.json"
+        hist_file = filename + "_hist.npy"
+        _measure = self.measure()
+        _config = {"orders":self.orders, "len": self.len, "curr_step":self.curr_step, "names": self.names}
+        _measure.update(_config)
+        with open(filename, "w") as f:
+            f.write(json.dumps(_measure))
+        np.savez(hist_file,**self.hist_version)
+        
     @abstractmethod
     def _define_acc(self, score):
         return 1

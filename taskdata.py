@@ -106,7 +106,9 @@ class SeqTaskData(TaskDataTransform):
             name = prefix+str(k)
             test, val, train = self._split_data(self.data_plan[k]) 
             for suffix, data in (("test",test), ("val",val), ("train", train)):
-                evaluator.add_data(name+suffix, data, batch_size=self.batch_size, self._define_order(k))
+                evaluator.add_data(name+suffix, data, \
+                    batch_size=self.batch_size, \
+                    order=self._define_order(k))
 
     @abstractmethod
     def _define_order(self, k:str) -> Tuple[str, Any]:
