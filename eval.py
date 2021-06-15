@@ -2,8 +2,9 @@ from typing import Dict
 import torch as T
 import torch.nn as nn
 import numpy as np
+from abc import ABC, abstractmethod
+from typing import Any, List, Dict, Tuple, Optional
 
-from typing import Any, List, Dict, Tuple
 from .base import *
 from .utils import PytorchModeWrap as PMW
 from .taskdata import SeqTaskData
@@ -13,6 +14,8 @@ def order_condition(step, order):
     control, val = order
     if control == "from":
         return step>=val
+    elif control == "in":
+        return step in val
     else:
         assert False, "Implement control order {}".format(control)
 
@@ -39,14 +42,17 @@ class EvalProgressPerSample(EvalBase):
         fd.feed_data(data)
         self.add_fix_data(name, fd, **kargs)
     
-    def add_fix_data(self, name: str, data: FixData, count_from=0):
+    def add_fix_data(self, name: str, data: FixData, order: Optional[Tuple[str, Any]] = None):
         assert name not in self.names, "duplicate name"
         self.names.append(name)
         self.data[name] = data
         len = data.len_element() 
         self.len[name] = len
         self.hist_version[name] = np.zeros(shape=(len, self.max_step), dtype = np.float32)
-        self.orders[name] = ("from",count_from)
+        if order is None:
+            self.orders[name] = ("from",0)
+        else:
+            self.orders[name] = order
 
     def eval(self, model):
         model = model.to(self.device)
@@ -66,30 +72,87 @@ class EvalProgressPerSample(EvalBase):
     def measure(self):
         rst = {}
         for name in self.names:
-            rst[name] = self._measure([name])
-        rst["total"] = self._measure(self.names)
+            rst[name+"_pairwise_ic"] = self._measure_pairwise(name)
+            rst[name+"_acc"] = self._measure_acc(name)
+            rst[name+"_ic"] = self._measure([name])
+        rst["total_ic"] = self._measure(self.names)
+        return rst
 
+    def _get_valid_step(self, name):
+        valid_step = []
+        for i in range(0, self.curr_step):
+            if order_condition(i, self.orders[name]):
+                valid_step.append(i)
+        return valid_step
 
-    def _measure(self, keys):
+    def _measure_acc(self, name):
+        cnt = 0
+        hist = self.hist_version[name]
+        length = self.len[name]
+        valid_step = self._get_valid_step(name)
+        l_steps = len(valid_step)
+        # altogether comparison
+        f=None
+        accs = []
+        for j in range(l_steps):
+            cnt = 0
+            for l in range(length):
+                step = valid_step[j]
+                _h = hist[l, step]
+                cnt += self._define_acc(_h)
+            accs.append(cnt*1.0/length )
+                    
+        rst = {"acc_list":accs, "cnt":length, "index":valid_step}
+        return rst
+
+    def _measure_pairwise(self, name):
+        hist = self.hist_version[name]
+        length = self.len[name]
+        
+        valid_step = self._get_valid_step(name)
+        l_steps = len(valid_step)
+        # pairwise comparison
+        full_score = {}
+        for compare_1 in range(l_steps):
+            step_1 = valid_step[compare_1]
+            for compare_2 in range(compare_1+1, l_steps):
+                step_2 = valid_step[compare_2]
+                cnt = 0
+                for l in range(length):
+                    if hist[l,step_1]>hist[l, step_2]:
+                        cnt += 1
+                full_score[(compare_1, compare_2)] = cnt * 1.0 / length
+        return {"inconsist_pairwise":full_score, "cnt":length, "index":valid_step}
+
+    def _measure(self, names):
         cnt = 0
         tot_cnt = 0
-        for name in self.keys:
+        for name in names:
             hist = self.hist_version[name]
             length = self.len[name]
             tot_cnt += length
-            for i in range(length):
-
-                f=None
-                for j in range(0,self.curr_step):
-                    if order_condition(j):
-                        if f is None:
-                            f = hist[i,j]
-                        else:
-                            if f < hist[i,j]:
-                                #print("sample %d" % i)
-                                cnt += 1
-                                break
-                        f = max(f, hist[i,j])
-        rst = {"inconsist":cnt*1.0/tot_cnt, "cnt":tot_cnt}
+            valid_step = self._get_valid_step(name)
+            l_steps = len(valid_step)
+            # altogether comparison
+            f=None
+            for l in range(length):
+                for j in range(l_steps):
+                    step = valid_step[j]
+                    _h = hist[l, step]
+                    if f is None:
+                        f = _h
+                    elif f < _h:
+                        #print("sample %d" % i)
+                        cnt += 1
+                        break
+                    f = max(f, _h)
+        rst = {"inconsist_tot":cnt*1.0/tot_cnt, "cnt":tot_cnt, "index":valid_step}
         return rst
 
+    @abstractmethod
+    def _define_acc(self, score):
+        return 1
+
+class EvalProgressPerSampleClassification(EvalProgressPerSample):
+    def _define_acc(self, score):
+        return score

@@ -13,13 +13,16 @@ def ClassificationMask(cls):
             self.map= {l : idx for idx, l in enumerate(labels)}
 
         def process_labels(self, labels):
+            def process(labels):
+                labels= [self.map[l] if l in self.map else 0 for l in labels]
+                return labels
             if T.is_tensor(labels):
                 device = labels.device
                 _labels = labels.cpu().numpy()
-                _labels = [self.map[l] for l in _labels]
+                _labels = process(_labels)
                 labels = T.tensor(_labels, dtype = labels.dtype).to(device)
             elif isinstance(labels, list):
-                labels = [self.map[l] for l in labels]
+                labels = process(labels)
             return labels
 
         def forward(self, x):

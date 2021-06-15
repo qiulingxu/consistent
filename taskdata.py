@@ -1,13 +1,13 @@
 import torch as T
-from .base import TaskDataTransform, EvalBase
-from .utils import assert_keys_in_dict, MAGIC, debug
-from . import utils
-from typing import List, Any, Dict
-
+from typing import List, Any, Dict, Tuple
 from torch.utils.data import random_split
 from abc import ABC, abstractmethod
 import math
 import copy
+
+from .base import TaskDataTransform, EvalBase
+from .utils import assert_keys_in_dict, MAGIC, debug
+from . import utils
 
 DEBUG = False
 
@@ -106,8 +106,11 @@ class SeqTaskData(TaskDataTransform):
             name = prefix+str(k)
             test, val, train = self._split_data(self.data_plan[k]) 
             for suffix, data in (("test",test), ("val",val), ("train", train)):
-                evaluator.add_data(name+suffix, data, batch_size=self.batch_size)
+                evaluator.add_data(name+suffix, data, batch_size=self.batch_size, self._define_order(k))
 
+    @abstractmethod
+    def _define_order(self, k:str) -> Tuple[str, Any]:
+        return ("Order_Type", "VALUE")
 
     def _proc_parameter(self, parameter):
         self.batch_size = parameter["batch_size"]
@@ -152,7 +155,7 @@ class ClassificationTaskData(SeqTaskData):
         _, label = dp
         return self.labelmap[label]
 
-class IncrementalClassificationData(ClassificationTaskData):
+class IncrementalDomainClassificationData(ClassificationTaskData):
     def _post_process(self):
         print("Into IncrementalClassificationData post process")
         self.comparison = []
@@ -162,6 +165,12 @@ class IncrementalClassificationData(ClassificationTaskData):
             self.task_classes[i] = self.task_classes[i-1] + self.task_classes[i]
         if debug and DEBUG:
             print(i,self.data_plan[i][:10])
+
+    def _define_order(self, k):
+        """ Each Task contains all information from before, but includes new ones. 
+        Thus order is defined from current position
+        """
+        return ("from", self.order.index(k))
 
 class CombineClassificationData(ClassificationTaskData):
     def _post_process(self):
@@ -173,3 +182,9 @@ class CombineClassificationData(ClassificationTaskData):
             self.comparison.append((i, self.combine_key))
             self.data_plan[self.combine_key].extend(self.data_plan[i])
             self.task_classes[self.combine_key] += self.task_classes[i]
+    def _define_order(self, k):
+        """ Each task is concurrently trained.
+        Thus we define the order as 
+        """
+        combine_id = self.order.index(self.combine_key)
+        return ("in", [self.order.index(k),combine_id])

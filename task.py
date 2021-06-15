@@ -3,7 +3,7 @@ from math import inf
 import torch as T
 import torch.nn as nn
 import copy
-
+from . import utils
 from .base import Task,TaskDataTransform, EvalBase
 from .utils import log, device, get_key_default, debug, PytorchModeWrap as PMW
 from .net import ClassificationMask
@@ -122,7 +122,7 @@ class VanillaTrain(Task):
             else:
                 assert False, "Implement other time slice definition"
             self.evaluator.eval(model)    
-            print("Measure",self.evaluator.measure())
+            log("Measure",self.evaluator.measure())
             if self.iscopy:
                 curr_model = copy.deepcopy(model)
                 self.prev_models = curr_model
@@ -161,6 +161,6 @@ class ClassificationTrain(VanillaTrain):
 
     def model_process(self, model: nn.Module, key:str, step:int): # type: ignore[override]
         if step == 0:
-            model.sublabels(self.taskdata.task_classes[key])
+            model.sublabels(self.taskdata.task_classes[key])#,tot_class=utils.config["IMG_SIZE"])
         return self._model_process(model, key, step)
     
