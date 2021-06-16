@@ -20,8 +20,10 @@ def order_condition(step, order):
     else:
         assert False, "Implement control order {}".format(control)
 
+EPS = 1e-5
+
 class EvalProgressPerSample(EvalBase):
-    def __init__(self, metric: nn.Module, device, max_step = 200, **karg):
+    def __init__(self, metric: nn.Module, device, max_step = 50, **karg):
         super().__init__(metric, device, max_step)
         self.metric = metric.to(device)
         self.data = {} # type: Dict [Any, FixData]
@@ -120,7 +122,7 @@ class EvalProgressPerSample(EvalBase):
                 step_2 = valid_step[compare_2]
                 cnt = 0
                 for l in range(length):
-                    if hist[l,step_1]>hist[l, step_2]:
+                    if hist[l,step_1]>hist[l, step_2] + EPS:
                         cnt += 1
                 full_score.append({"compare": (step_1, step_2), "consistency": cnt * 1.0 / length})
         return {"inconsist_pairwise":full_score, "cnt":length, "index":valid_step}
@@ -146,7 +148,7 @@ class EvalProgressPerSample(EvalBase):
                         #print("sample %d" % i)
                         cnt += 1
                         break
-                    f = max(f, _h)
+                    f = _h
         rst = {"inconsist_tot":cnt*1.0/tot_cnt, "cnt":tot_cnt, "index":valid_step}
         return rst
 

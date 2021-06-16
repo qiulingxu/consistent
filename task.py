@@ -33,7 +33,7 @@ class ConvergeImprovement():
         self.ratio = ratio
         self.max_score = None
         self.avg_growth = 1000
-        self.decay_rate = 0.7
+        self.decay_rate = 0.9
 
     def __call__(self, score, step):
         if self.max_score is None:
