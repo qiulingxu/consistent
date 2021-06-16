@@ -21,8 +21,8 @@ def order_condition(step, order):
         assert False, "Implement control order {}".format(control)
 
 class EvalProgressPerSample(EvalBase):
-    def __init__(self, metric: nn.Module, device, max_step = 10000, **karg):
-        super(EvalProgressPerSample, self).__init__(metric, device, max_step)
+    def __init__(self, metric: nn.Module, device, max_step = 200, **karg):
+        super().__init__(metric, device, max_step)
         self.metric = metric.to(device)
         self.data = {} # type: Dict [Any, FixData]
         self.len = {} # type: Dict [Any, int]
@@ -113,7 +113,7 @@ class EvalProgressPerSample(EvalBase):
         valid_step = self._get_valid_step(name)
         l_steps = len(valid_step)
         # pairwise comparison
-        full_score = {}
+        full_score = []
         for compare_1 in range(l_steps):
             step_1 = valid_step[compare_1]
             for compare_2 in range(compare_1+1, l_steps):
@@ -122,7 +122,7 @@ class EvalProgressPerSample(EvalBase):
                 for l in range(length):
                     if hist[l,step_1]>hist[l, step_2]:
                         cnt += 1
-                full_score[(compare_1, compare_2)] = cnt * 1.0 / length
+                full_score.append({"compare": (step_1, step_2), "consistency": cnt * 1.0 / length})
         return {"inconsist_pairwise":full_score, "cnt":length, "index":valid_step}
 
     def _measure(self, names):
@@ -135,8 +135,8 @@ class EvalProgressPerSample(EvalBase):
             valid_step = self._get_valid_step(name)
             l_steps = len(valid_step)
             # altogether comparison
-            f=None
             for l in range(length):
+                f=None
                 for j in range(l_steps):
                     step = valid_step[j]
                     _h = hist[l, step]
@@ -156,14 +156,30 @@ class EvalProgressPerSample(EvalBase):
         _measure = self.measure()
         _config = {"orders":self.orders, "len": self.len, "curr_step":self.curr_step, "names": self.names}
         _measure.update(_config)
-        with open(filename, "w") as f:
+        with open(_js_file, "w") as f:
             f.write(json.dumps(_measure))
         np.savez(hist_file,**self.hist_version)
-        
+    
+    def load(self,filename):
+        _js_file = filename + "_measure.json"
+        hist_file = filename + "_hist.npy"
+        with open(_js_file, "r") as f:
+            _measure = json.loads(f.read())
+        self.orders = _measure["orders"]
+        self.len = _measure["len"]
+        self.curr_step = _measure["curr_step"]
+        self.names = _measure["names"]
+        self.hist_version = np.load(hist_file + ".npz")
     @abstractmethod
-    def _define_acc(self, score):
+    def _define_acc(self, score: float) -> float:
+        assert False
         return 1
+
 
 class EvalProgressPerSampleClassification(EvalProgressPerSample):
     def _define_acc(self, score):
         return score
+
+class EvalReader(EvalProgressPerSampleClassification):
+    def __init__(self, max_step = 200, **karg):
+        super().__init__(metric=nn.Module(), device="cpu", max_step = max_step)

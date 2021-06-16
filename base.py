@@ -47,7 +47,7 @@ class EvalBase(object):
         pass
 
     @abstractmethod
-    def add_data(self, name:str, data:Iterable[Any]):
+    def add_data(self, name:str, data:Iterable[Any], **karg):
         pass
 
     @abstractmethod

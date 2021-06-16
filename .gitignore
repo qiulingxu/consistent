@@ -5,3 +5,6 @@
 .vscode/*
 .mypy_cache/*
 *.rtf
+results
+cl
+logs

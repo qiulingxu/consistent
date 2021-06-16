@@ -103,7 +103,7 @@ class SeqTaskData(TaskDataTransform):
 
     def fill_evaluator(self, evaluator: EvalBase, prefix=""):
         for k in self.order:
-            name = prefix+str(k)
+            name = prefix+str(k)+"_"
             test, val, train = self._split_data(self.data_plan[k]) 
             for suffix, data in (("test",test), ("val",val), ("train", train)):
                 evaluator.add_data(name+suffix, data, \
