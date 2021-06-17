@@ -8,6 +8,7 @@ from .base import Task,TaskDataTransform, EvalBase
 from .utils import log, device, get_key_default, debug, PytorchModeWrap as PMW
 from .net import ClassificationMask
 from .taskdata import ClassificationTaskData
+from .utils import get_config
 
 DEBUG = True
 
@@ -33,7 +34,7 @@ class ConvergeImprovement():
         self.ratio = ratio
         self.max_score = None
         self.avg_growth = 1000
-        self.decay_rate = 0.9
+        self.decay_rate = get_config("convergence_decay_rate")
 
     def __call__(self, score, step):
         if self.max_score is None:
@@ -60,7 +61,7 @@ class VanillaTrain(Task):
         self.process_parameter(parameter)
         
         self.evaluator = evalulator
-        self.ipv_threshold = get_key_default(parameter, "ipv_threshold", 1e-3, type=float)
+        self.ipv_threshold = get_config("convergence_improvement_threshold")
         self.iscopy = get_key_default(parameter, "iscopy", True, type=bool)
         self.device = get_key_default(parameter, "device", device, type=str)
     def process_parameter(self, parameter):
@@ -161,6 +162,10 @@ class ClassificationTrain(VanillaTrain):
 
     def model_process(self, model: nn.Module, key:str, step:int): # type: ignore[override]
         if step == 0:
-            model.sublabels(self.taskdata.task_classes[key])#,tot_class=utils.config["IMG_SIZE"])
+            tp = get_config("classification_model_process")
+            if tp.find("mask") >= 0:
+                model.sublabels(self.taskdata.task_classes[key])
+            if tp.find("reset") >= 0:
+                model.get_linear().reset_parameters()
         return self._model_process(model, key, step)
     

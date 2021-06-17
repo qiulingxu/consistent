@@ -4,3 +4,4 @@ from .metric import MetricClassification
 from .task import VanillaTrain, ClassificationTrain
 from .taskdata import ClassificationTaskData,IncrementalDomainClassificationData, CombineClassificationData
 from .net import ClassificationMask
+

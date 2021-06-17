@@ -17,6 +17,8 @@ def order_condition(step, order):
         return step>=val
     elif control == "in":
         return step in val
+    elif control == "all":
+        return True
     else:
         assert False, "Implement control order {}".format(control)
 
@@ -177,7 +179,7 @@ class EvalProgressPerSample(EvalBase):
         assert False
         return 1
 
-
+    
 class EvalProgressPerSampleClassification(EvalProgressPerSample):
     def _define_acc(self, score):
         return score

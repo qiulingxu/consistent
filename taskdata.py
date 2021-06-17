@@ -1,9 +1,11 @@
+import task
 import torch as T
 from typing import List, Any, Dict, Tuple
 from torch.utils.data import random_split
 from abc import ABC, abstractmethod
 import math
 import copy
+import random
 
 from .base import TaskDataTransform, EvalBase
 from .utils import assert_keys_in_dict, MAGIC, debug
@@ -44,6 +46,7 @@ class SeqTaskData(TaskDataTransform):
         self.dataset = dataset
         self.parameter = parameter
         self.evaluator = evaluator
+        self.do_shuffle = True
         self._proc_parameter(parameter)
         self.gen_data_plan()
 
@@ -59,9 +62,11 @@ class SeqTaskData(TaskDataTransform):
 
     def gen_data_plan(self):
         self.define_datafold()
+        if self.do_shuffle:
+            self.shuffle_data()
         self.data_plan = {}
-        for dp in self.dataset:
-            idx = self._assign_elem_id(dp)
+        for dpid, dp in enumerate(self.dataset):
+            idx = self._assign_elem_id(dpid, dp)
             if idx not in self.data_plan:
                 self.data_plan[idx] = []
             self.data_plan[idx].append(dp)
@@ -118,7 +123,8 @@ class SeqTaskData(TaskDataTransform):
         self.batch_size = parameter["batch_size"]
         return None
 
-    def _assign_elem_id(self, dp):
+    def _assign_elem_id(self, dpid, dp):
+        """datapoint id in whole dataset, and datapoint"""
         return 0
 
     def len(self,):
@@ -128,24 +134,31 @@ class SeqTaskData(TaskDataTransform):
         return list(self.data_plan[idx].shape)[0]
 
     def get_plan(self):
-        return self.data_plan       
+        return self.data_plan     
+
+    def shuffle_data(self,):
+        random.seed(utils.MAGIC)
+        self.dataset = random.shuffle(self.dataset)
 
 class ClassificationTaskData(SeqTaskData):
     def _proc_parameter(self, parameter):
-        if "labelmap" not in parameter:
-            assert_keys_in_dict(["segments"], parameter)
-            self.segments = parameter["segments"]
-            self.class_num = utils.config["CLASS_NUM"]
-            self.class_per_seg = math.ceil(self.class_num / self.segments)
-            def map_to_task(label):
-                return label // self.class_per_seg
-            self.labelmap = {}
-            for i in range(self.class_num):
-                self.labelmap[i] = map_to_task(i)
+        if "task_classes" not in parameter:
+            if "labelmap" not in parameter:
+                assert_keys_in_dict(["segments"], parameter)
+                self.segments = parameter["segments"]
+                self.class_num = utils.config["CLASS_NUM"]
+                self.class_per_seg = math.ceil(self.class_num / self.segments)
+                def map_to_task(label):
+                    return label // self.class_per_seg
+                self.labelmap = {}
+                for i in range(self.class_num):
+                    self.labelmap[i] = map_to_task(i)
+            else:
+                self.labelmap = parameter["labelmap"]
+                self.segments = len(set(self.labelmap.values()))
+            self._gen_task_mask()
         else:
-            self.labelmap = parameter["labelmap"]
-            self.segments = len(set(self.labelmap.values()))
-        self._gen_task_mask()
+            self.task_classes = parameter["task_classes"]
         return super()._proc_parameter(parameter)
         
     def _gen_task_mask(self):
@@ -153,28 +166,65 @@ class ClassificationTaskData(SeqTaskData):
 
         for j in range(self.class_num):
             self.task_classes[self.labelmap[j]].append(j)
-    def _assign_elem_id(self, dp):
+
+    def _remove_dup_classes(self):
+        for k in self.task_classes.keys():
+            self.task_classes[k] = list(set(self.task_classes[k]))
+
+class IncrementalDomainClassificationData(ClassificationTaskData):
+    def _assign_elem_id(self, dpid,  dp):
         _, label = dp
         return self.labelmap[label]
 
-class IncrementalDomainClassificationData(ClassificationTaskData):
+
+
+class IncrementalDataClassificationData(ClassificationTaskData):
     def _post_process(self):
         print("Into IncrementalClassificationData post process")
         self.comparison = []
         for i in range(1,self.segments):
             self.comparison.append((i-1, i))
             self.data_plan[i].extend(self.data_plan[i-1])
-            self.task_classes[i] = self.task_classes[i-1] + self.task_classes[i]
+        self._remove_dup_classes()
         if debug and DEBUG:
             print(i,self.data_plan[i][:10])
+    
+    def _proc_parameter(self, parameter):
+        self.do_shuffle = True
+        assert_keys_in_dict(["segments"], parameter)
+        self.segments = parameter["segments"]
+        class_num = utils.config["CLASS_NUM"]
+        parameter["task_classes"] = [[list(range(class_num))] for i in range(self.segments)]
+        super()._proc_parameter(parameter)
 
+    def _assign_elem_id(self, dpid,  dp):
+        return dpid % self.segments
+
+    def _define_order(self, k):
+        """ Each Task contains all information from before, but includes new ones. 
+        Thus order is defined from current position
+        """
+        return ("all", None)
+
+class SequentialOrder(ClassificationTaskData):
+    def _post_process(self):
+        print("Into IncrementalClassificationData post process")
+        self.comparison = []
+        for i in range(1,self.segments):
+            self.comparison.append((i-1, i))
+            self.data_plan[i].extend(self.data_plan[i-1])
+            #remove the duplicate items
+            self.task_classes[i] = self.task_classes[i-1] + self.task_classes[i]
+        self._remove_dup_classes()
+        if debug and DEBUG:
+            print(i,self.data_plan[i][:10])
     def _define_order(self, k):
         """ Each Task contains all information from before, but includes new ones. 
         Thus order is defined from current position
         """
         return ("from", self.order.index(k))
 
-class CombineClassificationData(ClassificationTaskData):
+class ConcurrentOrder(ClassificationTaskData):
     def _post_process(self):
         self.combine_key = self.segments
         self.data_plan[self.combine_key] = []
@@ -184,9 +234,37 @@ class CombineClassificationData(ClassificationTaskData):
             self.comparison.append((i, self.combine_key))
             self.data_plan[self.combine_key].extend(self.data_plan[i])
             self.task_classes[self.combine_key] += self.task_classes[i]
+        self._remove_dup_classes()
+
     def _define_order(self, k):
         """ Each task is concurrently trained.
         Thus we define the order as 
         """
         combine_id = self.order.index(self.combine_key)
         return ("in", [self.order.index(k),combine_id])
+
+IData_CD = IncrementalDataClassificationData
+IDomain_CD =IncrementalDomainClassificationData
+SeqCD = SequentialOrder
+ConCD = ConcurrentOrder
+
+class Seq_IDomain_CD(IDomain_CD, SeqCD):
+    @staticmethod
+    def __name__():
+        return "SeqDomainCD"
+
+class Con_IDomain_CD(IDomain_CD, ConCD):
+    @staticmethod
+    def __name__():
+        return "ConDomainCD"
+
+class Seq_IData_CD(IData_CD, SeqCD):
+    @staticmethod
+    def __name__():
+        return "SeqDataCD"
+
+
+class Con_IData_CD(IData_CD, ConCD):
+    @staticmethod
+    def __name__():
+        return "ConDataCD"

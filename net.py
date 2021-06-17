@@ -2,11 +2,16 @@ import torch as T
 import torch.nn as nn
 import numpy as np
 from typing import List, Type
+from utils import config
 
 def ClassificationMask(cls):
     class wrap_cls(cls):
         def __init__(self, *arg, **karg):
-            return super().__init__(*arg, **karg)
+            super().__init__(*arg, **karg)
+            self.sublabels(list(range(config["CLASS_NUM"])))
+
+        def get_linear(self):
+            return self.linear
 
         def sublabels(self, labels):
             self.labels = T.tensor(labels, dtype=T.int32)
@@ -14,7 +19,7 @@ def ClassificationMask(cls):
 
         def process_labels(self, labels):
             def process(labels):
-                labels= [self.map[l] if l in self.map else 0 for l in labels]
+                labels= [self.map[l] if l in self.map else -1 for l in labels]
                 return labels
             if T.is_tensor(labels):
                 device = labels.device

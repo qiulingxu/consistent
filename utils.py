@@ -19,6 +19,18 @@ def set_dataset():
         config["IMG_SIZE"] = (3, 32, 32)
         config["CLASS_NUM"] = 10
 
+def get_config(k):
+    return config[k]
+
+VALID_OPTION = {"classification_model_process": ["mask", "mask#reset","allclass"]}
+
+def get_config_default(k, default):
+    if k not in config:
+        config[k] =default
+        return default
+    else:
+        return config[k]
+
 if "INIT_ONCE" not in globals():
     INIT_ONCE = True
     config = {}
