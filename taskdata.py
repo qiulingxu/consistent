@@ -1,4 +1,3 @@
-import task
 import torch as T
 from typing import List, Any, Dict, Tuple
 from torch.utils.data import random_split
@@ -10,6 +9,7 @@ import random
 from .base import TaskDataTransform, EvalBase
 from .utils import assert_keys_in_dict, MAGIC, debug
 from . import utils
+from . import task
 
 DEBUG = False
 
@@ -138,7 +138,8 @@ class SeqTaskData(TaskDataTransform):
 
     def shuffle_data(self,):
         random.seed(utils.MAGIC)
-        self.dataset = random.shuffle(self.dataset)
+        self.dataset = list(self.dataset)
+        random.shuffle(self.dataset)
 
 class ClassificationTaskData(SeqTaskData):
     def _proc_parameter(self, parameter):

@@ -1,0 +1,3 @@
+[submodule "pytorch_cifar10"]
+	path = pytorch_cifar10
+	url = git@github.com:qiulingxu/submodules.git

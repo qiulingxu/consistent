@@ -52,7 +52,7 @@ class ConvergeImprovement():
             return False
 
 class VanillaTrain(Task):
-    def __init__(self, parameter:dict, granularity, evalulator:EvalBase, taskdata:TaskDataTransform, task_prefix):
+    def __init__(self,  granularity, evalulator:EvalBase, taskdata:TaskDataTransform, task_prefix, **parameter:dict):
         
         assert granularity in ["epoch", "batch", "converge"]
         self.granularity = granularity
@@ -64,8 +64,11 @@ class VanillaTrain(Task):
         self.ipv_threshold = get_config("convergence_improvement_threshold")
         self.iscopy = get_key_default(parameter, "iscopy", True, type=bool)
         self.device = get_key_default(parameter, "device", device, type=str)
+        self.max_epoch = 1e9
     def process_parameter(self, parameter):
         if self.granularity == "converge":
+            if "max_epoch" in parameter:
+                self.max_epoch = parameter["max_epoch"]
             if "perf_metric" in parameter:
                 self.perf_metric = parameter["perf_metric"]
             else:
@@ -120,6 +123,9 @@ class VanillaTrain(Task):
                     if self.converge(sc, step):
                         log("Task {} converges after {} steps".format(k, step))
                         break
+                    if step > self.max_epoch:
+                        log("Task {} reaches max epochs after {} steps".format(k, step))
+                        break
             else:
                 assert False, "Implement other time slice definition"
             self.evaluator.eval(model)    
@@ -135,7 +141,6 @@ class VanillaTrain(Task):
                         **karg)
     #def converge(self, criterion):
     #    return True
-
     def model_process(self, model: nn.Module, key:str, step:int):
         return self._model_process(model, key, step)
     

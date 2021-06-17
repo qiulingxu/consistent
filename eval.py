@@ -8,7 +8,6 @@ import json
 
 from .base import *
 from .utils import PytorchModeWrap as PMW
-from .taskdata import SeqTaskData
 from .evaldata import FixDataMemoryBatchClassification as MBC_FD
 
 def order_condition(step, order):

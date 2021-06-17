@@ -1,5 +1,5 @@
 import logging
-
+import json
 MAGIC = 66
 
 def log(*argv, **karv):
@@ -25,12 +25,21 @@ def get_config(k):
 VALID_OPTION = {"classification_model_process": ["mask", "mask#reset","allclass"]}
 
 def get_config_default(k, default):
+    global config
     if k not in config:
         config[k] =default
         return default
     else:
         return config[k]
 
+def set_config(k, v):
+    global config
+    config[k] = v
+
+def save_config(path):
+    with open(path + "_config.json", "w") as f:
+        f.write(json.dumps(config))
+        
 if "INIT_ONCE" not in globals():
     INIT_ONCE = True
     config = {}

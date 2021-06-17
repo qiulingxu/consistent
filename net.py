@@ -2,7 +2,7 @@ import torch as T
 import torch.nn as nn
 import numpy as np
 from typing import List, Type
-from utils import config
+from .utils import config
 
 def ClassificationMask(cls):
     class wrap_cls(cls):

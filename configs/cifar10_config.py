@@ -1,5 +1,6 @@
 from ..taskdata import Seq_IDomain_CD, Con_IDomain_CD, Seq_IData_CD, Con_IData_CD
 from ..utils import get_config_default, set_config
+
 def cifar10_incremental_config():
     ret = {}
     dataset = get_config_default("dataset", "cifar10")
@@ -12,23 +13,25 @@ def cifar10_incremental_config():
     assert develop_assumption in ["sequential", "concurrent"]
     assert classification_task in ["domain_inc", "data_inc"]
     if classification_task == "domain_inc":
-        get_config_default("ic_parameter", {"segments":5,"batch_size":128})
+        domain_inc_parameter = get_config_default("ic_parameter", domain_inc_parameter)
         if develop_assumption == "sequential":
             taskdata = Seq_IDomain_CD
         else:
             taskdata = Con_IDomain_CD
     elif classification_task == "data_inc":
-        get_config_default("ic_parameter", {"segments":5,"batch_size":128})
+        domain_inc_parameter = get_config_default("ic_parameter", domain_inc_parameter)
         if develop_assumption == "sequential":
             taskdata = Seq_IData_CD
         else:
             taskdata = Con_IData_CD
-    full_name = "DS{}_CIM{}_CT{}_DA{}_CvgD{:.2e}_CvgT{:2e}".format(dataset,\
+    full_name = "DS{}_CIM{}_CT{}_DA{}_CvgD{:.2e}_CvgT{:2e}_DomS{}".format(dataset,\
                                                 class_inc_mode,\
                                                 classification_task,\
                                                 develop_assumption,\
                                                 converge_decay,\
-                                                converge_thresh\
+                                                converge_thresh,\
+                                                domain_inc_parameter["segments"]
                                                 )
     set_config("full_name", full_name)
-    return
+    ret["taskdata"] = taskdata
+    return ret
