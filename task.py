@@ -162,8 +162,8 @@ class VanillaTrain(Task):
         pass
 
 class ClassificationTrain(VanillaTrain):
-    def __init__(self, parameter:dict, granularity, evalulator:EvalBase, taskdata:ClassificationTaskData, task_prefix):
-        super().__init__(parameter, granularity,evalulator,taskdata, task_prefix)
+    def __init__(self, granularity, evalulator:EvalBase, taskdata:ClassificationTaskData, task_prefix, **parameter:dict):
+        super().__init__(granularity,evalulator,taskdata, task_prefix, **parameter)
 
     def model_process(self, model: nn.Module, key:str, step:int): # type: ignore[override]
         if step == 0:
