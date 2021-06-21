@@ -1,4 +1,5 @@
 import torch as T
+import torch.nn as nn
 from typing import List, Any, Dict, Tuple
 from torch.utils.data import random_split
 from abc import ABC, abstractmethod
@@ -7,18 +8,19 @@ import copy
 import random
 
 from .base import TaskDataTransform, EvalBase
-from .utils import assert_keys_in_dict, MAGIC, debug
+from .utils import assert_keys_in_dict, MAGIC, debug, log
 from . import utils
 from . import task
 
 DEBUG = False
 
 class NoTask(TaskDataTransform):
-    def __init__(self, dataset, parameter, evaluator:EvalBase):
+    def __init__(self, dataset, evaluator:EvalBase, metric:nn.Module, **parameter):
         self.dataset = dataset
         self.parameter : Dict[str,Any] = parameter
         self.order: List[Any] = []
         self.evaluator = evaluator
+        self.metric = metric
         self.gen_data_plan(parameter)
 
     def gen_data_plan(self, parameter):
@@ -41,13 +43,17 @@ class NoTask(TaskDataTransform):
     def get_full_data(self,):
         return []
 
+
+
 class SeqTaskData(TaskDataTransform):
-    def __init__(self, dataset, parameter, evaluator:EvalBase):
+    def __init__(self, dataset, evaluator:EvalBase, metric:nn.Module,  **parameter):
         self.dataset = dataset
         self.parameter = parameter
         self.evaluator = evaluator
+        self.metric = metric
         self.do_shuffle = True
         self._proc_parameter(parameter)
+        self.l = {}  #type: Dict[str, int]
         self.gen_data_plan()
 
     def define_datafold(self,):
@@ -59,6 +65,15 @@ class SeqTaskData(TaskDataTransform):
     def define_order(self):
         """Overide this function to redefine the order"""
         self.order = list(sorted(self.data_plan.keys()))
+
+    def get_data(self, order, fold):
+        assert fold in ["train", "test", "val"]
+        if fold == "train":
+            return self.data_plan_train[order]
+        elif fold == "test":
+            return self.data_plan_test[order]
+        elif fold == "val":
+            return self.data_plan_val[order]
 
     def gen_data_plan(self):
         self.define_datafold()
@@ -87,8 +102,10 @@ class SeqTaskData(TaskDataTransform):
         self.data_plan_val = {}
         for k in self.order:
             l = len(self.data_plan[k])
-            self.data_plan_test[k],self.data_plan_val[k],self.data_plan_train[k] \
-                = self._split_data(self.data_plan[k])
+            self.l[k] = l
+            if l >= 10:
+                self.data_plan_test[k],self.data_plan_val[k],self.data_plan_train[k] \
+                    = self._split_data(self.data_plan[k])
 
 
     def _split_data(self,data):
@@ -110,10 +127,13 @@ class SeqTaskData(TaskDataTransform):
         for k in self.order:
             name = prefix+str(k)+"_"
             test, val, train = self._split_data(self.data_plan[k]) 
-            for suffix, data in (("test",test), ("val",val), ("train", train)):
-                evaluator.add_data(name+suffix, data, \
-                    batch_size=self.batch_size, \
-                    order=self._define_order(k))
+            
+            if self.l[k] >= 10:
+                for suffix, data in (("test",test), ("val",val), ("train", train)):
+                    evaluator.add_data(name+suffix, data, \
+                        batch_size=self.batch_size, \
+                        order=self._define_order(k),
+                        metric = self.metric)
 
     @abstractmethod
     def _define_order(self, k:str) -> Tuple[str, Any]:
@@ -141,6 +161,42 @@ class SeqTaskData(TaskDataTransform):
         self.dataset = list(self.dataset)
         random.shuffle(self.dataset)
 
+class SeqTaskNaiveData(SeqTaskData):
+    """Interface for multi task learning"""
+    def _proc_parameter(self, parameter):
+        assert "order" in parameter
+        self.order = parameter["order"]
+        self.task_classes = list(range(utils.config["CLASS_NUM"]))
+        assert "task_number" in parameter 
+        assert parameter["task_relation"] in ["concurrent", "parallel"]
+        self.task_relation = parameter["task_relation"]
+        self.task_number = parameter["task_number"]
+        if self.task_relation == "concurrent":
+            self.combine_key = self.task_number
+
+    def _assign_elem_id(self, dpid, dp):
+        return self.order
+
+    def fill_evaluator(self, evaluator: EvalBase, prefix=""):
+        k = self.order
+        name = prefix+str(k)+"_"
+        test, val, train = self._split_data(self.data_plan[k]) 
+        
+        if self.l[k] >= 10:
+            for suffix, data in (("test",test), ("val",val), ("train", train)):
+                evaluator.add_data(name+suffix, data, \
+                    batch_size=self.batch_size, \
+                    order=self._define_order(k),
+                    metric = self.metric)    
+
+    def _define_order(self, k):
+        if self.task_relation == "concurrent":
+            return ("in", [self.order, self.combine_key])
+        elif self.task_relation == "parallel":
+            return ("from", self.order)
+        else:
+            assert False
+
 class ClassificationTaskData(SeqTaskData):
     def _proc_parameter(self, parameter):
         if "task_classes" not in parameter:
@@ -160,11 +216,16 @@ class ClassificationTaskData(SeqTaskData):
             self._gen_task_mask()
         else:
             self.task_classes = parameter["task_classes"]
+        if "to_mul_task" in parameter:
+            self.to_mul_task = True
+        else:
+            self.to_mul_task = False
+        log("Choose to enable multi-task setting: {}".format(self.to_mul_task))
         return super()._proc_parameter(parameter)
         
     def _gen_task_mask(self):
         self.task_classes = {i:[] for i in range(self.segments)}
-
+    
         for j in range(self.class_num):
             self.task_classes[self.labelmap[j]].append(j)
 
@@ -269,3 +330,20 @@ class Con_IData_CD(IData_CD, ConCD):
     @staticmethod
     def __name__():
         return "ConDataCD"
+
+class MultTaskSeqData():
+    def __init__(self, orders):
+        self. tasks = {} # type: Dict[str, SeqTaskData]
+        self.task_names = []
+    def add_task_data(self, taskdata:SeqTaskData, taskname:str):
+        assert taskname not in self.task_names
+        self.tasks[taskname] = taskdata
+        self.task_names.append(taskname)
+    
+    def get_task_data(self, taskname:str, order:Any, fold:str):
+        assert taskname in self.task_names
+        return self.tasks[taskname].get_data(order, fold)
+
+    def fill_evaluator(self, evaluator: EvalBase, prefix=""):
+        for name in self.task_names:
+            self.tasks[name].fill_evaluator(evaluator, prefix + "{}_".format(name))

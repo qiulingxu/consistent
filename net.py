@@ -30,9 +30,15 @@ def ClassificationMask(cls):
                 labels = process(labels)
             return labels
 
-        def forward(self, x):
+        def process_output(self, output):
+            return T.index_select(output, dim=1, index=self.labels.to(output.device))
+
+        def forward(self, x, full=False):
             ret = super().forward(x)
-            return T.index_select(ret, dim=1, index=self.labels.to(ret.device))
+            if full:
+                return ret
+            else:
+                return self.process_output(ret)
     return wrap_cls
 
 

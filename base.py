@@ -43,7 +43,7 @@ class Task(ABC):
 
 class EvalBase(object):
     @abstractmethod
-    def __init__(self, metric: nn.Module, device, max_step):
+    def __init__(self, device, max_step):
         pass
 
     @abstractmethod
@@ -63,9 +63,10 @@ class EvalBase(object):
         return {}
 
 class TaskDataTransform(ABC):
-    def __init__(self, dataset, parameter):
+    def __init__(self, dataset, metric, parameter):
         self.dataset = dataset
         self.parameter = parameter
+        self.metric = metric
         self.gen_data_plan(parameter)
 
     @abstractmethod

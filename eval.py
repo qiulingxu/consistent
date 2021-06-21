@@ -24,9 +24,9 @@ def order_condition(step, order):
 EPS = 1e-5
 
 class EvalProgressPerSample(EvalBase):
-    def __init__(self, metric: nn.Module, device, max_step = 50, **karg):
-        super().__init__(metric, device, max_step)
-        self.metric = metric.to(device)
+    def __init__(self, device, max_step = 50, **karg):
+        super().__init__(metric, device, max_step
+        self.metrics = {} # type: Dict[str, nn.Module]
         self.data = {} # type: Dict [Any, FixData]
         self.len = {} # type: Dict [Any, int]
         self.hist_version :Dict[Any, np.ndarray] = {} 
@@ -41,15 +41,19 @@ class EvalProgressPerSample(EvalBase):
     def process_parameters(self,**karg):
         pass
 
-    def add_data(self, name:str, data:Iterable[Any], batch_size:int, **kargs):
+    def add_data(self, name:str, data:Iterable[Any], metric: nn.Module, batch_size:int,  **kargs):
         fd = MBC_FD(batch_size=batch_size)
         fd.feed_data(data)
-        self.add_fix_data(name, fd, **kargs)
+        self.add_fix_data(name, fd, metric, **kargs)
     
-    def add_fix_data(self, name: str, data: FixData, order: Optional[Tuple[str, Any]] = None):
+    def add_fix_data(self, name: str, data: FixData, metric: nn.Module, order: Optional[Tuple[str, Any]] = None):
         assert name not in self.names, "duplicate name"
         self.names.append(name)
+        self.metrics[name] = metric
         self.data[name] = data
+        if metric is not None:
+            metric = self.metric
+        self.metrics[name] = metric
         len = data.len_element() 
         self.len[name] = len
         self.hist_version[name] = np.zeros(shape=(len, self.max_step), dtype = np.float32)
@@ -58,15 +62,39 @@ class EvalProgressPerSample(EvalBase):
         else:
             self.orders[name] = order
 
-    def eval(self, model):
-        model = model.to(self.device)
-        with PMW(model, training=False):
-            for name in self.names:
+    def find_match_model(self, models, key):
+        ks = models.keys()
+        result = None
+        for k in ks:
+            if key.find(k)>=0: 
+                if result is None:
+                    result = k
+                else:
+                    assert False, "Find duplicate mathcing models {} and {} for task {}.".format(result, k, key)
+        return result
+    def eval(self, models):
+        
+        
+        for name in self.names:
+            key = find_match_model(models, name)
+            if order_condition(self.curr_step, self.orders[name]) \
+                and key is None:
+                    assert False, "You specify a order {} but did not \
+                        provide the model during evaluation {}".format(str(self.orders[name]),name) 
+            if key is None:
+                """This comparison is not required in order and not provided by users, thus skip it"""
+                continue
+            if isinstance(model, dict):
+                curr_model = model[name].to(self.device)
+            else:
+                curr_model = model.to(self.device)
+            with PMW(curr_model, training=False):
+                metric = self.metrics[name].to(self.device)
                 for dp in self.data[name].get_iterator():
                     input = [i.to(self.device) for i in dp["input"]]
                     dp = {k: i.to(self.device) for k, i in dp.items() if k != "input"}
-                    output = model(*input)
-                    score = self.metric(output, dp, model)
+                    output = curr_model(*input)
+                    score = metric(output, dp, curr_model)
                     idx = dp["idx"]
                     # in batch idx
                     for ib_idx, e_idx in enumerate(idx):
