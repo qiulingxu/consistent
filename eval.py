@@ -25,7 +25,7 @@ EPS = 1e-5
 
 class EvalProgressPerSample(EvalBase):
     def __init__(self, device, max_step = 50, **karg):
-        super().__init__(metric, device, max_step
+        super().__init__(device, max_step, **karg)
         self.metrics = {} # type: Dict[str, nn.Module]
         self.data = {} # type: Dict [Any, FixData]
         self.len = {} # type: Dict [Any, int]
@@ -73,8 +73,6 @@ class EvalProgressPerSample(EvalBase):
                     assert False, "Find duplicate mathcing models {} and {} for task {}.".format(result, k, key)
         return result
     def eval(self, models):
-        
-        
         for name in self.names:
             key = find_match_model(models, name)
             if order_condition(self.curr_step, self.orders[name]) \

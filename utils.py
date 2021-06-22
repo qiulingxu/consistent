@@ -18,6 +18,11 @@ def set_dataset():
     if config["dataset"] == "cifar10":
         config["IMG_SIZE"] = (3, 32, 32)
         config["CLASS_NUM"] = 10
+    elif config["dataset"] == "cifar100":
+        config["IMG_SIZE"] = (3, 32, 32)
+        config["CLASS_NUM"] = 100
+    else:
+        assert False
 
 def get_config(k):
     return config[k]
@@ -43,14 +48,14 @@ def save_config(path):
 if "INIT_ONCE" not in globals():
     INIT_ONCE = True
     config = {}
-    config["task"] = "classification"
-    config["dataset"] = "cifar10"
+    #config["task"] = "classification"
+    #config["dataset"] = "cifar10"
     device = "cuda"
     debug = True
     logging.basicConfig(filename='./logs/app.log', filemode='a', format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
     logger=logging.getLogger()
     
-    set_dataset()
+    #set_dataset()
 
 class PytorchModeWrap(object):
     def __init__(self, model, training):

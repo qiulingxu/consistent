@@ -1,1 +1,2 @@
-from .distill import knowledge_distill_loss
+from .classic import knowledge_distill_loss
+from .ewc import EWC

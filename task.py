@@ -101,47 +101,59 @@ class VanillaTrain(Task):
             step += 1
             tot_step += 1
 
-        self.prev_models = []
+        self.prev_models = {}
         tot_step = 0
+        self.pre_train()
         for k in self.taskdata.order:
-            curr_train_data = self.taskdata.data_plan_train[k]
-            curr_test_data = self.taskdata.data_plan_test[k]
-            curr_val_data = self.taskdata.data_plan_val[k]
+            self.curr_order = k
+            self.curr_train_data = self.taskdata.data_plan_train[k]
+            self.curr_test_data = self.taskdata.data_plan_test[k]
+            self.curr_val_data = self.taskdata.data_plan_val[k]
             if debug and DEBUG:
                 print("Data num for train {}, test {} and val {}".\
-                    format(len(curr_train_data), len(curr_test_data), len(curr_val_data)))
-            curr_train_data_loader = self.process_data(curr_train_data, mode="train")
-            curr_test_data_loader = self.process_data(curr_test_data, mode="eval")
-            curr_val_data_loader = self.process_data(curr_val_data, mode ="eval")
+                    format(len(self.curr_train_data), len(self.curr_test_data), len(curr_val_data)))
+            self.curr_train_data_loader = self.process_data(self.curr_train_data, mode="train")
+            self.curr_test_data_loader = self.process_data(self.curr_test_data, mode="eval")
+            self.curr_val_data_loader = self.process_data(self.curr_val_data, mode ="eval")
             step = 0
             if self.granularity == "converge":
                 self.converge = ConvergeImprovement(self.ipv_threshold)
                 while True:
                     model = self.model_process(model, k, step)
-                    train_loop(model, curr_train_data_loader)
-                    sc = self.perf_metric(model, curr_val_data_loader)                
+                    train_loop(model, self.curr_train_data_loader)
+                    sc = self.perf_metric(model, self.curr_val_data_loader)                
                     if self.converge(sc, step):
                         log("Task {} converges after {} steps".format(k, step))
                         break
                     if step > self.max_epoch:
                         log("Task {} reaches max epochs after {} steps".format(k, step))
                         break
+                model = self.model_process(model, k, -1)
             else:
                 assert False, "Implement other time slice definition"
             self.evaluator.eval(model)    
             log("Measure",self.evaluator.measure())
             if self.iscopy:
-                curr_model = copy.deepcopy(model)
-                self.prev_models = curr_model
+                self.curr_model = copy.deepcopy(model)
+                self.prev_models[k] = self.curr_model
             else:
-                self.prev_models.append(model)
+                self.prev_models = model
+                self.curr_model = model
+            self.post_task()
             self.eval(model=model,
-                        dataset=curr_test_data_loader, \
+                        dataset=self.curr_test_data_loader, \
                         prev_models=self.prev_models,\
                         **karg)
     #def converge(self, criterion):
     #    return True
+    def post_task(self):
+        pass
+
+    def pre_train(self):
+        pass
+
     def model_process(self, model: nn.Module, key:str, step:int):
+        """step = -1 when it finishes training"""
         return self._model_process(model, key, step)
     
     def train(self, model, dataset, prev_models, **karg):
