@@ -51,5 +51,7 @@ def cifar100_incremental_config():
 def incremental_config(dataset):
     if dataset == "cifar10":
         return cifar10_incremental_config()
-    else:
+    elif dataset == "cifar100":
         return cifar100_incremental_config()
+    else:
+        assert False

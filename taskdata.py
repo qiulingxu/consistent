@@ -60,6 +60,10 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
     def list_tasks(self):
         return [self.taskname]
 
+    def add_task_data(self, taskdata:TaskDataTransform, taskname:str):
+        assert False, "Sequential task data only simulates the read interface for MultiTaskDataTransform"
+        return
+
     def define_datafold(self,):
         """Overide this function to redefine the datafold rule"""
         self.split_fold = 10
@@ -78,6 +82,21 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
             return self.data_plan_test[order]
         elif fold == "val":
             return self.data_plan_val[order]
+
+    def get_comparison(self,):
+        return self.comparison
+
+    def get_task_compare(self, taskname:str, order:Any):
+        assert taskname == self.taskname
+        compare_pairs = []         
+        for compare_pair in self.get_comparison():   
+            if compare_pair[-1] == order:
+                compare_pairs.append(compare_pair[0])  
+        return compare_pairs
+
+    def get_task_data(self, taskname:str, order:Any, fold:str):
+        assert taskname == self.taskname
+        return self.get_data(order, fold)
 
     def gen_data_plan(self):
         self.define_datafold()
@@ -184,7 +203,7 @@ class SeqTaskNaiveData(SeqTaskData):
 
     def fill_evaluator(self, evaluator: EvalBase, prefix=""):
         k = self.order
-        name = prefix+str(k)+"_"
+        name = "{}_{}_{}_".format(prefix,self.taskname,str(k))
         test, val, train = self._split_data(self.data_plan[k]) 
         
         if self.l[k] >= 10:
@@ -336,10 +355,12 @@ class Con_IData_CD(IData_CD, ConCD):
     def __name__():
         return "ConDataCD"
 
-class MultTaskSeqData():
-    def __init__(self, orders):
+class MultTaskSeqData(MultiTaskDataTransform):
+    def __init__(self, order):
         self. tasks = {} # type: Dict[str, SeqTaskData]
         self.task_names = []
+        self.order = order
+
     def add_task_data(self, taskdata:SeqTaskData, taskname:str):
         assert taskname not in self.task_names
         self.tasks[taskname] = taskdata
@@ -355,3 +376,11 @@ class MultTaskSeqData():
     def fill_evaluator(self, evaluator: EvalBase, prefix=""):
         for name in self.task_names:
             self.tasks[name].fill_evaluator(evaluator, prefix + "{}_".format(name))
+
+    def get_task_compare(self, taskname:str, order:Any):
+        assert taskname in self.task_names
+        compare_pairs = []         
+        for compare_pair in self.tasks[taskname].get_comparison():   
+            if compare_pair[-1] == order:
+                compare_pairs.append(compare_pair[0])  
+        return compare_pairs

@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
+from typing import Dict
 from math import inf
 import torch as T
 import torch.nn as nn
 import copy
 from . import utils
-from .base import Task,TaskDataTransform, EvalBase
+from .base import Task,TaskDataTransform,MultiTaskDataTransform, EvalBase
 from .utils import log, device, get_key_default, debug, PytorchModeWrap as PMW
 from .net import ClassificationMask
 from .taskdata import ClassificationTaskData
@@ -52,12 +53,13 @@ class ConvergeImprovement():
             return False
 
 class VanillaTrain(Task):
-    def __init__(self,  granularity, evalulator:EvalBase, taskdata:TaskDataTransform, task_prefix, **parameter:dict):
+    def __init__(self,  granularity, evalulator:EvalBase, taskdata:MultiTaskDataTransform, task_prefix, **parameter:dict):
         
         assert granularity in ["epoch", "batch", "converge"]
         self.granularity = granularity
         self.task_prefix = task_prefix
         self.taskdata  = taskdata
+        self.multi_task_flag = True
         self.process_parameter(parameter)
         
         self.evaluator = evalulator
@@ -86,8 +88,12 @@ class VanillaTrain(Task):
         assert mode in ["train", "test"]
         return dataset
 
-    
-    def controlled_train(self, model, **karg):
+    def controlled_train_single_task(self, model, **karg):
+        self.multi_task_flag = False
+        self.controlled_train(self, {"Task":model}, **karg)
+        self.multi_task_flag = True
+
+    def controlled_train(self, task2model: Dict[str, nn.Module], **karg):
 
         def train_loop(model, traindata,):
             nonlocal step, tot_step
@@ -104,46 +110,65 @@ class VanillaTrain(Task):
         self.prev_models = {}
         tot_step = 0
         self.pre_train()
-        for k in self.taskdata.order:
-            self.curr_order = k
-            self.curr_train_data = self.taskdata.data_plan_train[k]
-            self.curr_test_data = self.taskdata.data_plan_test[k]
-            self.curr_val_data = self.taskdata.data_plan_val[k]
-            if debug and DEBUG:
-                print("Data num for train {}, test {} and val {}".\
-                    format(len(self.curr_train_data), len(self.curr_test_data), len(self.curr_val_data)))
-            self.curr_train_data_loader = self.process_data(self.curr_train_data, mode="train")
-            self.curr_test_data_loader = self.process_data(self.curr_test_data, mode="eval")
-            self.curr_val_data_loader = self.process_data(self.curr_val_data, mode ="eval")
+        for order in self.taskdata.order:
+            # These variables are for current time slice
+            self.curr_order = order
+            self.curr_train_data = {}
+            self.curr_test_data = {}
+            self.curr_val_data = {}
+            self.curr_train_data_loader = {}
+            self.curr_test_data_loader = {}
+            self.curr_val_data_loader = {}
+            self.compare_pairs = {}
+            self.curr_model = {}
+            for task_name, model in task2model.items():
+                ### Process the data
+
+                self.curr_train_data[task_name] = self.taskdata.get_task_data(task_name, order, "train")
+                self.curr_test_data[task_name] = self.taskdata.get_task_data(task_name, order, "test")
+                self.curr_val_data[task_name] = self.taskdata.get_task_data(task_name, order, "val")
+                if debug and DEBUG:
+                    print("Data num for train {}, test {} and val {}".\
+                        format(len(self.curr_train_data), len(self.curr_test_data), len(self.curr_val_data)))
+                self.curr_train_data_loader[task_name] = self.process_data(self.curr_train_data, mode="train")
+                self.curr_test_data_loader[task_name] = self.process_data(self.curr_test_data, mode="eval")
+                self.curr_val_data_loader[task_name] = self.process_data(self.curr_val_data, mode ="eval")
+            
+                ### Process the depencency edge
+                self.compare_pairs[task_name] = self.taskdata.get_task_compare(task_name, order)
+                self.curr_model[task_name] = self.model_process(task_name, model, order, step)
             step = 0
             if self.granularity == "converge":
                 self.converge = ConvergeImprovement(self.ipv_threshold)
                 while True:
-                    model = self.model_process(model, k, step)
+                    
                     train_loop(model, self.curr_train_data_loader)
                     sc = self.perf_metric(model, self.curr_val_data_loader)                
                     if self.converge(sc, step):
-                        log("Task {} converges after {} steps".format(k, step))
+                        log("Task {} converges after {} steps".format(order, step))
                         break
                     if step > self.max_epoch:
-                        log("Task {} reaches max epochs after {} steps".format(k, step))
+                        log("Task {} reaches max epochs after {} steps".format(order, step))
                         break
-                model = self.model_process(model, k, -1)
             else:
                 assert False, "Implement other time slice definition"
-            self.evaluator.eval(model)    
+            for task_name, model in task2model.items():
+                self.curr_model[task_name] = self.model_process(task_name, model, order, -1)
+            self.evaluator.eval(self.curr_model)    
             log("Measure",self.evaluator.measure())
             if self.iscopy:
-                self.curr_model = copy.deepcopy(model)
-                self.prev_models[k] = self.curr_model
+                self.curr_model = self.copy(self.curr_model)
+                self.prev_models[order] = self.curr_model
             else:
-                self.prev_models = model
-                self.curr_model = model
+                self.prev_models = None
+                self.curr_model = self.curr_model
             self.post_task()
             self.eval(model=model,
                         dataset=self.curr_test_data_loader, \
                         prev_models=self.prev_models,\
                         **karg)
+    def copy(self, models):
+        return copy.deepcopy(models)
     #def converge(self, criterion):
     #    return True
     def post_task(self):
@@ -152,9 +177,9 @@ class VanillaTrain(Task):
     def pre_train(self):
         pass
 
-    def model_process(self, model: nn.Module, key:str, step:int):
+    def model_process(self, task_name:str, model: nn.Module, key:str, step:int):
         """step = -1 when it finishes training"""
-        ret = self._model_process(model, key, step)
+        ret = self._model_process(task_name, model, key, step)
         assert ret is not None, "Please implement the processd model after iteration"
         return ret
     
@@ -168,7 +193,7 @@ class VanillaTrain(Task):
     def _train(self, model, dataset, prev_models,  **karg):
         pass
 
-    def _model_process(self, model: nn.Module, key, step):
+    def _model_process(self, task_name, model: nn.Module, key, step):
         return model
 
     @abstractmethod

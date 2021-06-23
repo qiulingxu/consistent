@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-from typing import Union, Any, Iterable, Dict, Tuple, List
+from typing import Union, Any, Iterable, Dict, Tuple, List, Sized
 import torch as T
 import torch.nn as nn
 import numpy as np
@@ -81,13 +81,26 @@ class TaskDataTransform(ABC):
         return self.data_plan
 
     @abstractmethod
-    def fill_evaluator(self,evaluator:EvalBase):
+    def fill_evaluator(self,evaluator:EvalBase, prefix=""):
         return True
 
 class MultiTaskDataTransform(ABC):
     @abstractmethod
     def add_task_data(self, taskdata:TaskDataTransform, taskname:str):
         pass
+
     @abstractmethod
     def list_tasks(self) -> List[str]:
         return []
+
+    @abstractmethod
+    def get_task_data(self, taskname:str, order:Any, fold:str) -> Sized:
+        return []
+
+    @abstractmethod
+    def get_task_compare(self, taskname:str, order:Any) -> Sized:
+        return []
+
+    @abstractmethod
+    def fill_evaluator(self, evaluator: EvalBase, prefix=""):
+        return
