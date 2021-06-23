@@ -14,7 +14,7 @@ def ClassificationMask(cls):
             return self.linear
 
         def sublabels(self, labels):
-            self.labels = T.tensor(labels, dtype=T.int32)
+            self.labels = T.tensor(labels, dtype=T.int64)
             self.map= {l : idx for idx, l in enumerate(labels)}
 
         def process_labels(self, labels):

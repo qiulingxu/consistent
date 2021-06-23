@@ -51,8 +51,6 @@ class EvalProgressPerSample(EvalBase):
         self.names.append(name)
         self.metrics[name] = metric
         self.data[name] = data
-        if metric is not None:
-            metric = self.metric
         self.metrics[name] = metric
         len = data.len_element() 
         self.len[name] = len
@@ -71,17 +69,22 @@ class EvalProgressPerSample(EvalBase):
                     result = k
                 else:
                     assert False, "Find duplicate mathcing models {} and {} for task {}.".format(result, k, key)
+        assert result is not None, "Find no mathcing models {} and {} for task {}.".format(result, k, key)
         return result
-    def eval(self, models):
+    def eval(self, task2models):
+        """We have task name and dataseet names.
+            the dataset name must contain exactly one task name to build correspondence
+        """
         for name in self.names:
-            key = find_match_model(models, name)
-            if order_condition(self.curr_step, self.orders[name]) \
-                and key is None:
+            key = self.find_match_model(task2models, name)
+            if order_condition(self.curr_step, self.orders[name]):
+                if key is None:
                     assert False, "You specify a order {} but did not \
                         provide the model during evaluation {}".format(str(self.orders[name]),name) 
-            if key is None:
+            elif key is None:
                 """This comparison is not required in order and not provided by users, thus skip it"""
                 continue
+            model = task2models[key]
             if isinstance(model, dict):
                 curr_model = model[name].to(self.device)
             else:

@@ -7,7 +7,7 @@ import math
 import copy
 import random
 
-from .base import TaskDataTransform, EvalBase
+from .base import TaskDataTransform, EvalBase, MultiTaskDataTransform
 from .utils import assert_keys_in_dict, MAGIC, debug, log
 from . import utils
 from . import task
@@ -45,9 +45,10 @@ class NoTask(TaskDataTransform):
 
 
 
-class SeqTaskData(TaskDataTransform):
-    def __init__(self, dataset, evaluator:EvalBase, metric:nn.Module,  **parameter):
+class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
+    def __init__(self, dataset, evaluator:EvalBase, metric:nn.Module, taskname:str = "Task",  **parameter):
         self.dataset = dataset
+        self.taskname = taskname
         self.parameter = parameter
         self.evaluator = evaluator
         self.metric = metric
@@ -55,6 +56,9 @@ class SeqTaskData(TaskDataTransform):
         self._proc_parameter(parameter)
         self.l = {}  #type: Dict[str, int]
         self.gen_data_plan()
+
+    def list_tasks(self):
+        return [self.taskname]
 
     def define_datafold(self,):
         """Overide this function to redefine the datafold rule"""
@@ -86,7 +90,7 @@ class SeqTaskData(TaskDataTransform):
                 self.data_plan[idx] = []
             self.data_plan[idx].append(dp)
         self.define_order()
-        self.fill_evaluator(self.evaluator,"pertask_")
+        self.fill_evaluator(self.evaluator,"perslice_")
         self._post_process()
         self.split_data()
         #for k in self.data_plan.keys():
@@ -125,15 +129,16 @@ class SeqTaskData(TaskDataTransform):
 
     def fill_evaluator(self, evaluator: EvalBase, prefix=""):
         for k in self.order:
-            name = prefix+str(k)+"_"
-            test, val, train = self._split_data(self.data_plan[k]) 
-            
-            if self.l[k] >= 10:
+            name = "{}_{}_{}_".format(prefix,self.taskname,str(k))
+            if len(self.data_plan[k]) >= 10:
+                test, val, train = self._split_data(self.data_plan[k])   
                 for suffix, data in (("test",test), ("val",val), ("train", train)):
                     evaluator.add_data(name+suffix, data, \
                         batch_size=self.batch_size, \
                         order=self._define_order(k),
                         metric = self.metric)
+            else:
+                log("The data plan for {} is less than 10 samples and discarded.".format(k))
 
     @abstractmethod
     def _define_order(self, k:str) -> Tuple[str, Any]:
@@ -340,6 +345,9 @@ class MultTaskSeqData():
         self.tasks[taskname] = taskdata
         self.task_names.append(taskname)
     
+    def list_tasks(self):
+        return self.task_names
+
     def get_task_data(self, taskname:str, order:Any, fold:str):
         assert taskname in self.task_names
         return self.tasks[taskname].get_data(order, fold)

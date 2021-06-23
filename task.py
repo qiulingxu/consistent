@@ -111,7 +111,7 @@ class VanillaTrain(Task):
             self.curr_val_data = self.taskdata.data_plan_val[k]
             if debug and DEBUG:
                 print("Data num for train {}, test {} and val {}".\
-                    format(len(self.curr_train_data), len(self.curr_test_data), len(curr_val_data)))
+                    format(len(self.curr_train_data), len(self.curr_test_data), len(self.curr_val_data)))
             self.curr_train_data_loader = self.process_data(self.curr_train_data, mode="train")
             self.curr_test_data_loader = self.process_data(self.curr_test_data, mode="eval")
             self.curr_val_data_loader = self.process_data(self.curr_val_data, mode ="eval")
@@ -154,7 +154,9 @@ class VanillaTrain(Task):
 
     def model_process(self, model: nn.Module, key:str, step:int):
         """step = -1 when it finishes training"""
-        return self._model_process(model, key, step)
+        ret = self._model_process(model, key, step)
+        assert ret is not None, "Please implement the processd model after iteration"
+        return ret
     
     def train(self, model, dataset, prev_models, **karg):
         self._train(model, dataset, prev_models, device=self.device, **karg)

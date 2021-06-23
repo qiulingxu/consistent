@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-from typing import Union, Any, Iterable
+from typing import Union, Any, Iterable, Dict, Tuple, List
 import torch as T
 import torch.nn as nn
 import numpy as np
@@ -47,15 +47,15 @@ class EvalBase(object):
         pass
 
     @abstractmethod
-    def add_data(self, name:str, data:Iterable[Any], **karg):
+    def add_data(self, name:str, data:Iterable[Any], metric: nn.Module, order:Tuple[str, Any], **karg):
         pass
 
     @abstractmethod
-    def add_fix_data(self, name:str, data:FixData):
+    def add_fix_data(self, name:str, data:FixData, metric: nn.Module, order:Tuple[str, Any]):
         pass
 
     @abstractmethod
-    def eval(self, model):
+    def eval(self, models: Dict[str, nn.Module]):
         pass
     
     @abstractmethod
@@ -83,3 +83,11 @@ class TaskDataTransform(ABC):
     @abstractmethod
     def fill_evaluator(self,evaluator:EvalBase):
         return True
+
+class MultiTaskDataTransform(ABC):
+    @abstractmethod
+    def add_task_data(self, taskdata:TaskDataTransform, taskname:str):
+        pass
+    @abstractmethod
+    def list_tasks(self) -> List[str]:
+        return []
