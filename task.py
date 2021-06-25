@@ -10,6 +10,7 @@ from .utils import log, device, get_key_default, debug, PytorchModeWrap as PMW
 from .net import ClassificationMask
 from .taskdata import ClassificationTaskData
 from .utils import get_config
+from .metric import eval_score
 
 DEBUG = True
 
@@ -29,6 +30,8 @@ def classifier_perf_metric(model, test_data):
             tot_corr += T.sum(corr)
             cnt += list(corr.shape)[0]
     return tot_corr.cpu().numpy()/cnt
+
+
 
 class ConvergeImprovement():
     def __init__(self, ratio=1e-3):
@@ -67,14 +70,13 @@ class VanillaTrain(Task):
         self.iscopy = get_key_default(parameter, "iscopy", True, type=bool)
         self.device = get_key_default(parameter, "device", device, type=str)
         self.max_epoch = 1e9
+
+        self.perf_metric = {}
+
     def process_parameter(self, parameter):
         if self.granularity == "converge":
             if "max_epoch" in parameter:
                 self.max_epoch = parameter["max_epoch"]
-            if "perf_metric" in parameter:
-                self.perf_metric = parameter["perf_metric"]
-            else:
-                self.perf_metric = classifier_perf_metric
         elif self.granularity == "epoch":
             self.epoch = parameter["epoch"]
         else:
@@ -128,16 +130,19 @@ class VanillaTrain(Task):
 
             for task_name, model in task2model.items():
                 ### Process the data
-
+                self.perf_metric[task_name] = eval_score(self.taskdata.get_metric(task_name))
                 self.curr_train_data[task_name] = self.taskdata.get_task_data(task_name, order, "train")
                 self.curr_test_data[task_name] = self.taskdata.get_task_data(task_name, order, "test")
                 self.curr_val_data[task_name] = self.taskdata.get_task_data(task_name, order, "val")
+                if debug:
+                    print(order)
+                    print(len(self.curr_train_data[task_name]))
                 if debug and DEBUG:
                     print("Data num for train {}, test {} and val {}".\
-                        format(len(self.curr_train_data), len(self.curr_test_data), len(self.curr_val_data)))
-                self.curr_train_data_loader[task_name] = self.process_data(self.curr_train_data, mode="train")
-                self.curr_test_data_loader[task_name] = self.process_data(self.curr_test_data, mode="eval")
-                self.curr_val_data_loader[task_name] = self.process_data(self.curr_val_data, mode ="eval")
+                        format(len(self.curr_train_data[task_name]), len(self.curr_test_data[task_name]), len(self.curr_val_data[task_name])))
+                self.curr_train_data_loader[task_name] = self.process_data(self.curr_train_data[task_name], mode="train")
+                self.curr_test_data_loader[task_name] = self.process_data(self.curr_test_data[task_name], mode="eval")
+                self.curr_val_data_loader[task_name] = self.process_data(self.curr_val_data[task_name], mode ="eval")
             
                 ### Process the depencency edge
                 self.compare_pairs[task_name] = self.taskdata.get_task_compare(task_name, order)
@@ -145,16 +150,20 @@ class VanillaTrain(Task):
             step = 0
             if self.granularity == "converge":
                 self.converge = ConvergeImprovement(self.ipv_threshold)
+                
                 while True:
-                    
-                    train_loop(self.curr_model, self.curr_train_data_loader)
-                    sc = self.perf_metric(model, self.curr_val_data_loader)                
-                    if self.converge(sc, step):
-                        log("Task {} converges after {} steps".format(order, step))
-                        break
-                    if step > self.max_epoch:
-                        log("Task {} reaches max epochs after {} steps".format(order, step))
-                        break
+                    if self.multi_task_flag == False:
+                        train_loop(self.curr_model, self.curr_train_data_loader)
+                        task_name = list(task2model.keys())[0]
+                        sc = self.perf_metric[task_name](self.curr_model[task_name], self.curr_val_data_loader[task_name])                
+                        if self.converge(sc, step):
+                            log("Task {} converges after {} steps".format(order, step))
+                            break
+                        if step > self.max_epoch:
+                            log("Task {} reaches max epochs after {} steps".format(order, step))
+                            break
+                    else:
+                        assert False, "not Implemented"
             else:
                 assert False, "Implement other time slice definition"
             for task_name, model in task2model.items():

@@ -12,7 +12,7 @@ from .utils import assert_keys_in_dict, MAGIC, debug, log
 from . import utils
 from . import task
 
-DEBUG = False
+DEBUG = True
 
 class NoTask(TaskDataTransform):
     def __init__(self, dataset, evaluator:EvalBase, metric:nn.Module, **parameter):
@@ -79,6 +79,7 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
         self.order = list(sorted(self.data_plan.keys()))
 
     def get_data(self, order, fold):
+        assert order in self.order
         assert fold in ["train", "test", "val"]
         if fold == "train":
             return self.data_plan_train[order]
@@ -86,21 +87,6 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
             return self.data_plan_test[order]
         elif fold == "val":
             return self.data_plan_val[order]
-
-    def get_comparison(self,):
-        return self.comparison
-
-    def get_task_compare(self, taskname:str, order:Any):
-        assert taskname == self.taskname
-        compare_pairs = []         
-        for compare_pair in self.get_comparison():   
-            if compare_pair[-1] == order:
-                compare_pairs.append(compare_pair[0])  
-        return compare_pairs
-
-    def get_task_data(self, taskname:str, order:Any, fold:str):
-        assert taskname == self.taskname
-        return self.get_data(order, fold)
 
     def gen_data_plan(self):
         self.define_datafold()
@@ -189,6 +175,26 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
         self.dataset = list(self.dataset)
         random.shuffle(self.dataset)
 
+    # Multi Task Compatible
+    def get_comparison(self,):
+        return self.comparison
+
+    def get_task_compare(self, taskname:str, order:Any):
+        assert taskname == self.taskname
+        compare_pairs = []         
+        for compare_pair in self.get_comparison():   
+            if compare_pair[-1] == order:
+                compare_pairs.append(compare_pair[0])  
+        return compare_pairs
+
+    def get_task_data(self, taskname:str, order:Any, fold:str):
+        assert taskname == self.taskname
+        return self.get_data(order, fold)
+
+    def get_metric(self, taskname:str):
+        assert taskname == self.taskname
+        return self.metric
+
 class SeqTaskNaiveData(SeqTaskData):
     """Interface for multi task learning"""
     def _proc_parameter(self, parameter):
@@ -270,14 +276,15 @@ class IncrementalDomainClassificationData(ClassificationTaskData):
 
 class IncrementalDataClassificationData(ClassificationTaskData):
     def _post_process(self):
-        print("Into IncrementalClassificationData post process")
+        print("Into IncrementalDataClassificationData post process")
         self.comparison = []
         for i in range(1,self.segments):
             self.comparison.append((i-1, i))
             self.data_plan[i].extend(self.data_plan[i-1])
+            if debug and DEBUG:
+                print(i,len(self.data_plan[i]))
         self._remove_dup_classes()
-        if debug and DEBUG:
-            print(i,self.data_plan[i][:10])
+
     
     def _proc_parameter(self, parameter):
         self.do_shuffle = True
@@ -298,16 +305,17 @@ class IncrementalDataClassificationData(ClassificationTaskData):
 
 class SequentialOrder(ClassificationTaskData):
     def _post_process(self):
-        print("Into IncrementalClassificationData post process")
+        print("Into SequentialOrder post process")
         self.comparison = []
         for i in range(1,self.segments):
             self.comparison.append((i-1, i))
             self.data_plan[i].extend(self.data_plan[i-1])
             #remove the duplicate items
             self.task_classes[i] = self.task_classes[i-1] + self.task_classes[i]
+            if debug and DEBUG:
+                print(i,len(self.data_plan[i]))
         self._remove_dup_classes()
-        if debug and DEBUG:
-            print(i,self.data_plan[i][:10])
+
     def _define_order(self, k):
         """ Each Task contains all information from before, but includes new ones. 
         Thus order is defined from current position
@@ -316,6 +324,7 @@ class SequentialOrder(ClassificationTaskData):
 
 class ConcurrentOrder(ClassificationTaskData):
     def _post_process(self):
+        print("Into ConcurrentOrder post process")
         self.combine_key = self.segments
         self.data_plan[self.combine_key] = []
         self.order.append(self.combine_key)
@@ -324,6 +333,8 @@ class ConcurrentOrder(ClassificationTaskData):
             self.comparison.append((i, self.combine_key))
             self.data_plan[self.combine_key].extend(self.data_plan[i])
             self.task_classes[self.combine_key] += self.task_classes[i]
+            if debug and DEBUG:
+                print(i,len(self.data_plan[i]))            
         self._remove_dup_classes()
 
     def _define_order(self, k):
@@ -376,6 +387,10 @@ class MultTaskSeqData(MultiTaskDataTransform):
     def get_task_data(self, taskname:str, order:Any, fold:str):
         assert taskname in self.task_names
         return self.tasks[taskname].get_data(order, fold)
+
+    def get_metric(self, taskname:str):
+        assert taskname in self.task_names
+        return self.tasks[taskname].metric
 
     def fill_evaluator(self, evaluator: EvalBase, prefix=""):
         for name in self.task_names:

@@ -98,9 +98,32 @@ class MultiTaskDataTransform(ABC):
         return []
 
     @abstractmethod
+    def get_metric(self, taskname:str) -> nn.Module:
+        return None
+
+    @abstractmethod
     def get_task_compare(self, taskname:str, order:Any) -> Sized:
         return []
 
     @abstractmethod
     def fill_evaluator(self, evaluator: EvalBase, prefix=""):
         return
+
+
+class ClassificationModule(nn.Module):
+
+    @abstractmethod
+    def get_linear(self):
+        return None
+
+    @abstractmethod
+    def sublabels(self, labels):
+        pass
+
+    @abstractmethod
+    def process_labels(self, labels):
+        return labels
+
+    @abstractmethod
+    def process_output(self, output):
+        return output

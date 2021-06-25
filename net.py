@@ -2,10 +2,11 @@ import torch as T
 import torch.nn as nn
 import numpy as np
 from typing import List, Type
+from .base import ClassificationModule
 from .utils import config
 
 def ClassificationMask(cls):
-    class wrap_cls(cls):
+    class wrap_cls(cls, ClassificationModule):
         def __init__(self, *arg, **karg):
             super().__init__(*arg, **karg)
             self.sublabels(list(range(config["CLASS_NUM"])))
