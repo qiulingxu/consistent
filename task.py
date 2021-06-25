@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict
+from typing import Dict, Any
 from math import inf
 import torch as T
 import torch.nn as nn
@@ -90,26 +90,29 @@ class VanillaTrain(Task):
 
     def controlled_train_single_task(self, model, **karg):
         self.multi_task_flag = False
-        self.controlled_train(self, {"Task":model}, **karg)
+        self.controlled_train({"Task":model}, **karg)
         self.multi_task_flag = True
 
     def controlled_train(self, task2model: Dict[str, nn.Module], **karg):
 
-        def train_loop(model, traindata,):
+        def train_loop(task2model, traindata,):
             nonlocal step, tot_step
             if self.granularity == "converge":
                 karg["epoch"] = step
-            with PMW(model, training=True):
-                self.train(model = model, \
+            with PMW(task2model, training=True):
+                self.train(task2model = task2model, \
                         dataset=traindata, \
                         prev_models=self.prev_models,\
                         **karg)
             step += 1
             tot_step += 1
 
-        self.prev_models = {}
+        self.prev_models = {} # type: Dict[str, Dict[Any, nn.Module]]
         tot_step = 0
+        self.tasks = task2model.keys()
         self.pre_train()
+        for tn in self.tasks:
+            self.prev_models[tn] = {}
         for order in self.taskdata.order:
             # These variables are for current time slice
             self.curr_order = order
@@ -121,6 +124,8 @@ class VanillaTrain(Task):
             self.curr_val_data_loader = {}
             self.compare_pairs = {}
             self.curr_model = {}
+            step = 0
+
             for task_name, model in task2model.items():
                 ### Process the data
 
@@ -142,7 +147,7 @@ class VanillaTrain(Task):
                 self.converge = ConvergeImprovement(self.ipv_threshold)
                 while True:
                     
-                    train_loop(model, self.curr_train_data_loader)
+                    train_loop(self.curr_model, self.curr_train_data_loader)
                     sc = self.perf_metric(model, self.curr_val_data_loader)                
                     if self.converge(sc, step):
                         log("Task {} converges after {} steps".format(order, step))
@@ -157,16 +162,16 @@ class VanillaTrain(Task):
             self.evaluator.eval(self.curr_model)    
             log("Measure",self.evaluator.measure())
             if self.iscopy:
-                self.curr_model = self.copy(self.curr_model)
-                self.prev_models[order] = self.curr_model
+                self.last_model = self.copy(self.curr_model)
             else:
-                self.prev_models = None
-                self.curr_model = self.curr_model
+                self.last_model = self.curr_model
+            for tn in self.tasks:
+                self.prev_models[tn][order] = self.curr_model[tn]
             self.post_task()
-            self.eval(model=model,
+            """self.eval(model=model,
                         dataset=self.curr_test_data_loader, \
                         prev_models=self.prev_models,\
-                        **karg)
+                        **karg)"""
     def copy(self, models):
         return copy.deepcopy(models)
     #def converge(self, criterion):
@@ -180,18 +185,32 @@ class VanillaTrain(Task):
     def model_process(self, task_name:str, model: nn.Module, key:str, step:int):
         """step = -1 when it finishes training"""
         ret = self._model_process(task_name, model, key, step)
+
         assert ret is not None, "Please implement the processd model after iteration"
         return ret
     
-    def train(self, model, dataset, prev_models, **karg):
-        self._train(model, dataset, prev_models, device=self.device, **karg)
+
+    def train(self, task2model, dataset, prev_models, **karg):
+        if self.multi_task_flag == False:
+            # Only one task is used here
+            assert len(task2model) == 1
+            task_name = list(task2model.keys())[0]
+            self._train_single(task2model[task_name], \
+                dataset[task_name], \
+                prev_models[task_name], 
+                device=self.device, **karg)
+        else:
+            assert False, "Please implement it"
     
     def eval(self, model, dataset, prev_models, **karg):
         self._eval(model, dataset, prev_models, device=self.device, **karg)
+
+    def _train_single(self, model, dataset, prev_models,  **karg):
+        """ This function can be used for training single task with multiple stage. It bypass the multutask feature"""
+        print("Please implement train single task function") 
     
-    @abstractmethod
-    def _train(self, model, dataset, prev_models,  **karg):
-        pass
+    def _train(self, task2model, dataset, prev_models,  **karg):
+        print("Please implement train multi task function") 
 
     def _model_process(self, task_name, model: nn.Module, key, step):
         return model
@@ -204,12 +223,12 @@ class ClassificationTrain(VanillaTrain):
     def __init__(self, granularity, evalulator:EvalBase, taskdata:ClassificationTaskData, task_prefix, **parameter:dict):
         super().__init__(granularity,evalulator,taskdata, task_prefix, **parameter)
 
-    def model_process(self, model: nn.Module, key:str, step:int): # type: ignore[override]
+    def model_process(self, task_name:str, model: nn.Module, key:str, step:int): # type: ignore[override]
         if step == 0:
             tp = get_config("classification_model_process")
             if tp.find("mask") >= 0:
-                model.sublabels(self.taskdata.task_classes[key])
+                model.sublabels(self.taskdata.tasks[task_name].task_classes[key])
             if tp.find("reset") >= 0:
                 model.get_linear().reset_parameters()
-        return self._model_process(model, key, step)
+        return super().model_process(task_name, model, key, step)
     

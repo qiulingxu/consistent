@@ -1,5 +1,8 @@
 import logging
 import json
+
+import torch.nn as nn
+from typing import Union, Dict, Any
 MAGIC = 66
 
 def log(*argv, **karv):
@@ -47,7 +50,7 @@ def save_config(path):
         
 if "INIT_ONCE" not in globals():
     INIT_ONCE = True
-    config = {}
+    config = {} # type: Dict[str, Any]
     #config["task"] = "classification"
     #config["dataset"] = "cifar10"
     device = "cuda"
@@ -58,17 +61,28 @@ if "INIT_ONCE" not in globals():
     #set_dataset()
 
 class PytorchModeWrap(object):
-    def __init__(self, model, training):
+    def __init__(self, model :Union[nn.Module,Dict[str,nn.Module]], training):
         self.training = training
         self.model = model 
 
     def __enter__(self):
-        self.curr_mode = self.model.training
-        self.model.train(self.training)
+        
+        if isinstance(self.model, dict):
+            self.curr_mode = {}
+            for k,m in self.model.items():
+                self.curr_mode[k] = m.training
+                m.train(self.training)
+        else:
+            self.curr_mode = self.model.training
+            self.model.train(self.training)
         return self
     
     def __exit__(self,exception_type, exception_value, traceback):
-        self.model.train(self.curr_mode)
+        if isinstance(self.model, dict):
+            for k,m in self.model.items():
+                m.train(self.curr_mode[k])
+        else:
+            self.model.train(self.curr_mode)
 
 def get_key_default(dct, key, default, range = None, type = None):
     if key in dct:

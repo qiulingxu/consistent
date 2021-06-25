@@ -57,6 +57,10 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
         self.l = {}  #type: Dict[str, int]
         self.gen_data_plan()
 
+        # simulate multi tasks 
+        self.tasks ={}
+        self.tasks[self.taskname] = self
+
     def list_tasks(self):
         return [self.taskname]
 
