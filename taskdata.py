@@ -259,6 +259,7 @@ class ClassificationTaskData(SeqTaskData):
             self._gen_task_mask()
         else:
             self.task_classes = parameter["task_classes"]
+            self.segments = len(self.task_classes)
         if "to_mul_task" in parameter:
             self.to_mul_task = True
         else:
@@ -297,14 +298,16 @@ class IncrementalDataClassificationData(ClassificationTaskData):
     
     def _proc_parameter(self, parameter):
         self.do_shuffle = True
-        assert_keys_in_dict(["segments"], parameter)
+        assert_keys_in_dict(["segments", "segment_random_seed"], parameter)
         self.segments = parameter["segments"]
         class_num = utils.config["CLASS_NUM"]
-        parameter["task_classes"] = [[list(range(class_num))] for i in range(self.segments)]
+        self.elem_id_gen = utils.get_fixed_random_generator(num= self.segments, seed=parameter["segment_random_seed"])
+        parameter["task_classes"] = {i:list(range(class_num)) for i in range(self.segments)}
         super()._proc_parameter(parameter)
 
     def _assign_elem_id(self, dpid,  dp):
-        return dpid % self.segments
+        #return dpid % self.segments
+        return next(self.elem_id_gen)
 
     def _define_order(self, k):
         """ Each Task contains all information from before, but includes new ones. 
