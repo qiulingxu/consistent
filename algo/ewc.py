@@ -8,17 +8,25 @@ from torch import nn
 from torch.nn import functional as F
 from torch.autograd import Variable
 import torch.utils.data
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader,RandomSampler
+
+from ..utils import PytorchModeWrap as PMW, PytorchFixWrap as PFW
 lam = 5000
 class EWC(nn.Module):
     def __init__(self, dataset:Iterable, to_data_loader, max_data=None):
+        super().__init__()
         self.dataset = dataset
-        self.dataloader = to_data_loader(dataset, batch_size=1)
+        self.ld = min(1000, len(dataset))
+        sampler = RandomSampler(range(self.ld),replacement=True, num_samples=self.ld)
+        self.dataloader = to_data_loader(dataset, batch_size=1, sampler=sampler, shuffle=False)
+        self.softmax = nn.CrossEntropyLoss()
 
-    def set_model(self, model:nn.Module):
+    def set_model(self, model:nn.Module, var_lst):
         self.model = model
-        self.params = {n: p for n, p in self.model.named_parameters() if p.requires_grad}
-        
+        #print(model.named_parameters)
+        self.var_lst = var_lst
+        self.params = {n: p for n, p in model.named_parameters() if n in var_lst}
+        print("param",var_lst)
 
     def eval_fisher(self):
         #can only run offline
@@ -26,19 +34,26 @@ class EWC(nn.Module):
         for n, p in deepcopy(self.params).items():
             p.data.zero_()
             precision_matrices[n] = variable(p.data)
-
-        self.model.eval()
-        for input, label in self.dataloader:
-            self.model.zero_grad()
-            input = variable(input)
-            
-            output = self.model(input).view(1, -1)
-            loss = F.nll_loss(F.log_softmax(output, dim=1), label)
-            loss.backward()
-
-            for n, p in self.model.named_parameters():
-                precision_matrices[n].data += p.grad.data ** 2 / len(self.dataset)
-
+        
+        with PMW(self.model,False) and PFW(self.model,self.var_lst,True): 
+            for idx, (input, label) in enumerate(self.dataloader):
+                self.model.zero_grad()
+                input = variable(input)
+                label = label.to(input.device)
+                output = self.model(input).view(1, -1)
+                if idx == 0:
+                    print(output)
+                #loss = F.nll_loss(F.log_softmax(output, dim=1), label)
+                loss = self.softmax(output, label)
+                #print(loss)
+                assert not torch.isnan(loss).any(), "NAN" + str(loss)
+                loss.backward()
+                
+                for n, p in self.model.named_parameters():
+                    precision_matrices[n].data += p.grad.data ** 2 / self.ld
+                    assert not torch.isnan(precision_matrices[n]).any(), "NAN" + n
+                #print(precision_matrices)
+                #i = input()
         precision_matrices = {n: p for n, p in precision_matrices.items()}
         self._precision_matrices = precision_matrices
 
@@ -48,15 +63,21 @@ class EWC(nn.Module):
 
     def penalty(self, model: nn.Module):
         loss = 0
+        #print(model.named_parameters)
         for n, p in model.named_parameters():
-            _loss = self._precision_matrices[n] * (p - self._means[n]) ** 2
+            _loss = self._precision_matrices[n] * ((p - self._means[n]) ** 2)
+            if torch.isnan(_loss).any():
+                print("NAN" + n)
+                print(p, self._means[n])
+                #print(self._precision_matrices[n]) 
+                assert False
             loss += _loss.sum()
         return loss * lam
 
 def variable(t: torch.Tensor, use_cuda=True, **kwargs):
     if torch.cuda.is_available() and use_cuda:
         t = t.cuda()
-    return Variable(t, **kwargs)
+    return t#Variable(t, **kwargs)
 
 
 

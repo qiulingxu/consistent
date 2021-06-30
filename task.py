@@ -6,7 +6,7 @@ import torch.nn as nn
 import copy
 from . import utils
 from .base import Task,TaskDataTransform,MultiTaskDataTransform, EvalBase
-from .utils import log, device, get_key_default, debug, PytorchModeWrap as PMW
+from .utils import log, device, get_key_default, debug, freeze, PytorchModeWrap as PMW
 from .net import ClassificationMask
 from .taskdata import ClassificationTaskData
 from .utils import get_config
@@ -63,7 +63,6 @@ class VanillaTrain(Task):
         self.task_prefix = task_prefix
         self.taskdata  = taskdata
         self.multi_task_flag = True
-        self.process_parameter(parameter)
         
         self.evaluator = evalulator
         self.ipv_threshold = get_config("convergence_improvement_threshold")
@@ -72,6 +71,8 @@ class VanillaTrain(Task):
         self.max_epoch = 1e9
 
         self.perf_metric = {}
+        self.task_var = {}
+        self.process_parameter(parameter)
 
     def process_parameter(self, parameter):
         if self.granularity == "converge":
@@ -150,12 +151,12 @@ class VanillaTrain(Task):
             step = 0
             if self.granularity == "converge":
                 self.converge = ConvergeImprovement(self.ipv_threshold)
-                
+            
                 while True:
                     if self.multi_task_flag == False:
+                        self.curr_task_name = list(task2model.keys())[0]
                         train_loop(self.curr_model, self.curr_train_data_loader)
-                        task_name = list(task2model.keys())[0]
-                        sc = self.perf_metric[task_name](self.curr_model[task_name], self.curr_val_data_loader[task_name])                
+                        sc = self.perf_metric[self.curr_task_name](self.curr_model[task_name], self.curr_val_data_loader[task_name])                
                         if self.converge(sc, step):
                             log("Task {} converges after {} steps".format(order, step))
                             break
@@ -175,7 +176,13 @@ class VanillaTrain(Task):
             else:
                 self.last_model = self.curr_model
             for tn in self.tasks:
-                self.prev_models[tn][order] = self.curr_model[tn]
+                var_lst = freeze(self.last_model[tn])
+                self.last_model[tn].eval()
+                if tn in self.task_var:
+                    assert self.task_var[tn] == var_lst, "Task parameters are changed for {}".format(tn)
+                else:
+                    self.task_var[tn] = var_lst
+                self.prev_models[tn][order] = self.last_model[tn]
             self.post_task()
             """self.eval(model=model,
                         dataset=self.curr_test_data_loader, \

@@ -31,6 +31,10 @@ def ClassificationMask(cls):
                 labels = process(labels)
             return labels
 
+        def reset_head(self):
+            with T.no_grad():
+                nn.init.xavier_uniform_(self.get_linear().weight)
+
         def process_output(self, output):
             return T.index_select(output, dim=1, index=self.labels.to(output.device))
 

@@ -214,4 +214,4 @@ class EvalProgressPerSampleClassification(EvalProgressPerSample):
 
 class EvalReader(EvalProgressPerSampleClassification):
     def __init__(self, max_step = 200, **karg):
-        super().__init__(metric=nn.Module(), device="cpu", max_step = max_step)
+        super().__init__(device="cpu", max_step = max_step)

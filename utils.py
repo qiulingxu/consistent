@@ -24,6 +24,9 @@ def set_dataset():
     elif config["dataset"] == "cifar100":
         config["IMG_SIZE"] = (3, 32, 32)
         config["CLASS_NUM"] = 100
+    elif config["dataset"] == "stl10":
+        config["IMG_SIZE"] = (3, 96, 96)
+        config["CLASS_NUM"] = 10
     else:
         assert False
 
@@ -35,13 +38,15 @@ VALID_OPTION = {"classification_model_process": ["mask", "mask#reset","allclass"
 def get_config_default(k, default):
     global config
     if k not in config:
-        config[k] =default
+        set_config(k, default)
         return default
     else:
         return config[k]
 
 def set_config(k, v):
     global config
+    if k in VALID_OPTION:
+        assert v in VALID_OPTION[k]
     config[k] = v
 
 def save_config(path):
@@ -60,6 +65,13 @@ if "INIT_ONCE" not in globals():
     
     #set_dataset()
 
+def freeze(model: nn.Module):
+    var_list =[] 
+    for param in model.parameters():
+        if param.requires_grad:
+            var_list.append(param)
+        param.requires_grad = False
+    return var_list
 class PytorchModeWrap(object):
     def __init__(self, model :Union[nn.Module,Dict[str,nn.Module]], training):
         self.training = training
@@ -83,6 +95,28 @@ class PytorchModeWrap(object):
                 m.train(self.curr_mode[k])
         else:
             self.model.train(self.curr_mode)
+
+class PytorchFixWrap(object):
+    def __init__(self, model :nn.Module, var_list, requires_grad):
+        self.requires_grad = requires_grad
+        self.var_list = set(var_list)
+        self.model = model 
+        self.prev_stat = {}
+
+    def __enter__(self):
+        
+        param = self.model.named_parameters()
+        for k,v in param:
+            if k in self.var_list:
+                self.prev_stat[k] = v.requires_grad
+                v.requires_grad = self.requires_grad
+        return self
+    
+    def __exit__(self,exception_type, exception_value, traceback):
+        param = self.model.named_parameters()
+        for k,v in param:
+            if k in self.var_list:
+                v.requires_grad = self.prev_stat[k]
 
 def get_key_default(dct, key, default, range = None, type = None):
     if key in dct:

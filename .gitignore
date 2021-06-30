@@ -1,5 +1,8 @@
 *.sh
 *.txt
+.ipynb_checkpoints
+*.png
+.DS_Store
 *.json
 *.pyc
 .vscode/*
