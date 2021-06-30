@@ -10,13 +10,14 @@ from torch.autograd import Variable
 import torch.utils.data
 from torch.utils.data import DataLoader,RandomSampler
 
-from ..utils import PytorchModeWrap as PMW, PytorchFixWrap as PFW
-lam = 10.0
+from ..utils import PytorchModeWrap as PMW, PytorchFixWrap as PFW, get_config_default
+
 class EWC(nn.Module):
     def __init__(self, dataset:Iterable, to_data_loader, max_data=None):
         super().__init__()
+        self.lam = get_config_default("ewc_lambda", 1.0)
         self.dataset = dataset
-        self.ld = min(1000, len(dataset))
+        self.ld = min(5000, len(dataset))
         sampler = RandomSampler(range(self.ld),replacement=True, num_samples=self.ld)
         self.dataloader = to_data_loader(dataset, batch_size=1, sampler=sampler, shuffle=False)
         self.softmax = nn.CrossEntropyLoss()
@@ -24,7 +25,7 @@ class EWC(nn.Module):
     def set_model(self, model:nn.Module, var_lst):
         self.model = model
         #print(model.named_parameters)"
-        self.var_lst = var_lst #[v for v in var_lst if v.find("linear")==-1 ]
+        self.var_lst = [v for v in var_lst if v.find("linear")==-1 ]#var_lst #
         self.params = {n: p for n, p in model.named_parameters() if n in var_lst}
         #print("param",var_lst)
 
@@ -74,7 +75,7 @@ class EWC(nn.Module):
                     print(self._precision_matrices[n]) 
                     assert False"""
                 loss += _loss.sum()
-        return loss * lam
+        return loss * self.lam
 
 def variable(t: torch.Tensor, use_cuda=True, **kwargs):
     if torch.cuda.is_available() and use_cuda:

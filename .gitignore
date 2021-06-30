@@ -12,4 +12,4 @@ results
 cl
 pytorch_cifar10
 logs
-.ipynb_checkpoints
+.ipynb_checkpoints/*

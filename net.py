@@ -5,6 +5,10 @@ from typing import List, Type
 from .base import ClassificationModule
 from .utils import config
 
+def error(s):
+    assert False, s
+    return None
+
 def ClassificationMask(cls):
     class wrap_cls(cls, ClassificationModule):
         def __init__(self, *arg, **karg):
@@ -20,7 +24,7 @@ def ClassificationMask(cls):
 
         def process_labels(self, labels):
             def process(labels):
-                labels= [self.map[l] if l in self.map else -1 for l in labels]
+                labels= [self.map[l] if l in self.map else error("Invalid label {} in current task".format(l)) for l in labels]
                 return labels
             if T.is_tensor(labels):
                 device = labels.device

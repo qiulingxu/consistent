@@ -11,6 +11,7 @@ from .base import TaskDataTransform, EvalBase, MultiTaskDataTransform
 from .utils import assert_keys_in_dict, MAGIC, debug, log
 from . import utils
 from . import task
+import numpy as np
 
 DEBUG = True
 
@@ -239,14 +240,22 @@ class ClassificationTaskData(SeqTaskData):
                 self.segments = parameter["segments"]
                 self.class_num = utils.config["CLASS_NUM"]
                 self.class_per_seg = math.ceil(self.class_num / self.segments)
-                def map_to_task(label):
-                    return label // self.class_per_seg
+                if "segment_random_seed" in parameter:
+                    lst = utils.get_fixed_random_index(num=self.class_num, seed=parameter["segment_random_seed"])
+                    def map_to_task(label):
+                        nonlocal lst
+                        return lst[label] // self.class_per_seg
+                else:
+                    def map_to_task(label):
+                        return label // self.class_per_seg
+
                 self.labelmap = {}
                 for i in range(self.class_num):
                     self.labelmap[i] = map_to_task(i)
             else:
                 self.labelmap = parameter["labelmap"]
                 self.segments = len(set(self.labelmap.values()))
+            print("Current label mapping is: {}".format(str(self.labelmap)))
             self._gen_task_mask()
         else:
             self.task_classes = parameter["task_classes"]

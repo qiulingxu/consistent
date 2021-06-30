@@ -3,6 +3,8 @@ import json
 
 import torch.nn as nn
 from typing import Union, Dict, Any
+import numpy as np
+
 MAGIC = 66
 
 def log(*argv, **karv):
@@ -64,6 +66,11 @@ if "INIT_ONCE" not in globals():
     logger=logging.getLogger()
     
     #set_dataset()
+
+def get_fixed_random_index(num, seed):
+    np.random.seed(seed)
+    shuffle = np.random.permutation(num)
+    return shuffle
 
 def freeze(model: nn.Module):
     var_list =[] 

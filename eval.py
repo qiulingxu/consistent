@@ -81,8 +81,8 @@ class EvalProgressPerSample(EvalBase):
                 if key is None:
                     assert False, "You specify a order {} but did not \
                         provide the model during evaluation {}".format(str(self.orders[name]),name) 
-            elif key is None:
-                """This comparison is not required in order and not provided by users, thus skip it"""
+            else:#if key is None:
+                """This comparison is not required in order, thus skip it"""
                 continue
             model = task2models[key]
             if isinstance(model, dict):
