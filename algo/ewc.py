@@ -11,7 +11,7 @@ import torch.utils.data
 from torch.utils.data import DataLoader,RandomSampler
 
 from ..utils import PytorchModeWrap as PMW, PytorchFixWrap as PFW
-lam = 5000
+lam = 10.0
 class EWC(nn.Module):
     def __init__(self, dataset:Iterable, to_data_loader, max_data=None):
         super().__init__()
@@ -23,10 +23,10 @@ class EWC(nn.Module):
 
     def set_model(self, model:nn.Module, var_lst):
         self.model = model
-        #print(model.named_parameters)
-        self.var_lst = var_lst
+        #print(model.named_parameters)"
+        self.var_lst = var_lst #[v for v in var_lst if v.find("linear")==-1 ]
         self.params = {n: p for n, p in model.named_parameters() if n in var_lst}
-        print("param",var_lst)
+        #print("param",var_lst)
 
     def eval_fisher(self):
         #can only run offline
@@ -35,25 +35,26 @@ class EWC(nn.Module):
             p.data.zero_()
             precision_matrices[n] = variable(p.data)
         
-        with PMW(self.model,False) and PFW(self.model,self.var_lst,True): 
-            for idx, (input, label) in enumerate(self.dataloader):
-                self.model.zero_grad()
-                input = variable(input)
-                label = label.to(input.device)
-                output = self.model(input).view(1, -1)
-                if idx == 0:
-                    print(output)
-                #loss = F.nll_loss(F.log_softmax(output, dim=1), label)
-                loss = self.softmax(output, label)
-                #print(loss)
-                assert not torch.isnan(loss).any(), "NAN" + str(loss)
-                loss.backward()
-                
-                for n, p in self.model.named_parameters():
-                    precision_matrices[n].data += p.grad.data ** 2 / self.ld
-                    assert not torch.isnan(precision_matrices[n]).any(), "NAN" + n
-                #print(precision_matrices)
-                #i = input()
+        with PMW(self.model,False):
+            with PFW(self.model,self.var_lst,True): 
+                for idx, (input, label) in enumerate(self.dataloader):
+                    self.model.zero_grad()
+                    input = variable(input)
+                    label = label.to(input.device)
+                    output = self.model(input).view(1, -1)
+                    label = self.model.process_labels(label)
+                    #loss = F.nll_loss(F.log_softmax(output, dim=1), label)
+                    loss = self.softmax(output, label)
+                    #print(loss)
+                    assert not torch.isnan(loss).any(), "NAN" + str(loss)
+                    loss.backward()
+                    with torch.no_grad():
+                        for n, p in self.model.named_parameters():
+                            if n in self.var_lst:
+                                precision_matrices[n] += p.grad ** 2 / self.ld
+                                assert not torch.isnan(precision_matrices[n]).any(), "NAN" + n
+                        #print(precision_matrices)
+                    #i = input()
         precision_matrices = {n: p for n, p in precision_matrices.items()}
         self._precision_matrices = precision_matrices
 
@@ -65,13 +66,14 @@ class EWC(nn.Module):
         loss = 0
         #print(model.named_parameters)
         for n, p in model.named_parameters():
-            _loss = self._precision_matrices[n] * ((p - self._means[n]) ** 2)
-            if torch.isnan(_loss).any():
-                print("NAN" + n)
-                print(p, self._means[n])
-                #print(self._precision_matrices[n]) 
-                assert False
-            loss += _loss.sum()
+            if n in self.var_lst:
+                _loss = self._precision_matrices[n] * ((p - self._means[n]) ** 2)
+                """if torch.isnan(_loss).any():
+                    print("NAN" + n)
+                    print(p, self._means[n])
+                    print(self._precision_matrices[n]) 
+                    assert False"""
+                loss += _loss.sum()
         return loss * lam
 
 def variable(t: torch.Tensor, use_cuda=True, **kwargs):

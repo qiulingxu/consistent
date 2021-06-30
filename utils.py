@@ -67,9 +67,9 @@ if "INIT_ONCE" not in globals():
 
 def freeze(model: nn.Module):
     var_list =[] 
-    for param in model.parameters():
+    for name, param in model.named_parameters():
         if param.requires_grad:
-            var_list.append(param)
+            var_list.append(name)
         param.requires_grad = False
     return var_list
 class PytorchModeWrap(object):
