@@ -116,6 +116,7 @@ class VanillaTrain(Task):
         self.pre_train()
         for tn in self.tasks:
             self.prev_models[tn] = {}
+        self.curr_model = task2model
         for order in self.taskdata.order:
             # These variables are for current time slice
             self.curr_order = order
@@ -126,8 +127,7 @@ class VanillaTrain(Task):
             self.curr_test_data_loader = {}
             self.curr_val_data_loader = {}
             self.compare_pairs = {}
-            self.curr_model = {}
-            step = 0
+            #self.curr_model = {}
 
             for task_name, model in task2model.items():
                 ### Process the data
@@ -147,7 +147,6 @@ class VanillaTrain(Task):
             
                 ### Process the depencency edge
                 self.compare_pairs[task_name] = self.taskdata.get_task_compare(task_name, order)
-                self.curr_model[task_name] = self.model_process(task_name, model, order, step)
             step = 0
             if self.granularity == "converge":
                 self.converge = ConvergeImprovement(self.ipv_threshold)
@@ -155,6 +154,8 @@ class VanillaTrain(Task):
                 while True:
                     if self.multi_task_flag == False:
                         self.curr_task_name = list(task2model.keys())[0]
+                        self.curr_model[self.curr_task_name] = self.model_process(self.curr_task_name, \
+                            self.curr_model[self.curr_task_name], order, step)
                         train_loop(self.curr_model, self.curr_train_data_loader)
                         sc = self.perf_metric[self.curr_task_name](self.curr_model[task_name], self.curr_val_data_loader[task_name])                
                         if self.converge(sc, step):
@@ -167,7 +168,7 @@ class VanillaTrain(Task):
                         assert False, "not Implemented"
             else:
                 assert False, "Implement other time slice definition"
-            for task_name, model in task2model.items():
+            for task_name, model in self.curr_model.items():
                 self.curr_model[task_name] = self.model_process(task_name, model, order, -1)
             self.evaluator.eval(self.curr_model)    
             log("Measure",self.evaluator.measure())
