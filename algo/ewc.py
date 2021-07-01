@@ -25,7 +25,7 @@ class EWC(nn.Module):
     def set_model(self, model:nn.Module, var_lst):
         self.model = model
         #print(model.named_parameters)"
-        self.var_lst = [v for v in var_lst if v.find("linear")==-1 ]#var_lst #
+        self.var_lst = var_lst#[v for v in var_lst if v.find("linear")==-1 ]# #
         self.params = {n: p for n, p in model.named_parameters() if n in var_lst}
         #print("param",var_lst)
 
@@ -52,16 +52,16 @@ class EWC(nn.Module):
                     with torch.no_grad():
                         for n, p in self.model.named_parameters():
                             if n in self.var_lst:
-                                precision_matrices[n] += p.grad ** 2 / self.ld
+                                precision_matrices[n] += p.grad.detach() ** 2 
                                 assert not torch.isnan(precision_matrices[n]).any(), "NAN" + n
                         #print(precision_matrices)
                     #i = input()
-        precision_matrices = {n: p for n, p in precision_matrices.items()}
+        precision_matrices = {n: p / self.ld for n, p in precision_matrices.items()}
         self._precision_matrices = precision_matrices
 
         self._means = {}
-        for n, p in deepcopy(self.params).items():
-            self._means[n] = variable(p.data)
+        for n, p in self.params.items():
+            self._means[n] = p.detach().clone()
 
     def penalty(self, model: nn.Module):
         loss = 0
