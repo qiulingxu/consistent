@@ -10,12 +10,12 @@ from torch.autograd import Variable
 import torch.utils.data
 from torch.utils.data import DataLoader,RandomSampler
 
-from ..utils import PytorchModeWrap as PMW, PytorchFixWrap as PFW, get_config_default
+from ..utils import PytorchModeWrap as PMW, PytorchFixWrap as PFW, get_config_default, get_config
 
 class EWC(nn.Module):
     def __init__(self, dataset:Iterable, to_data_loader, max_data=None):
         super().__init__()
-        self.lam = get_config_default("ewc_lambda", 1.0)
+        self.lam = get_config("ewc_lambda")
         self.dataset = dataset
         self.ld = min(5000, len(dataset))
         sampler = RandomSampler(range(self.ld),replacement=True, num_samples=self.ld)

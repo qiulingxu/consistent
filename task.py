@@ -28,8 +28,8 @@ def classifier_perf_metric(model, test_data):
             y_pred = T.argmax(output, dim=1)
             corr = T.eq(y_pred, y).float()
             tot_corr += T.sum(corr)
-            cnt += list(corr.shape)[0]
-    return tot_corr.cpu().numpy()/cnt
+            cnt += y.size(0)
+    return (tot_corr/cnt).cpu().numpy()
 
 
 
@@ -40,20 +40,55 @@ class ConvergeImprovement():
         self.avg_growth = 1000
         self.decay_rate = get_config("convergence_decay_rate")
 
-    def __call__(self, score, step):
+    def __call__(self, score, step, model):
         if self.max_score is None:
             self.max_score = score
             self.avg_growth = 1
+            self.best_model = model
         else:
             improve_ratio = (score - self.max_score) / self.max_score
             self.avg_growth = self.avg_growth*self.decay_rate + improve_ratio * (1-self.decay_rate)
-            self.max_score = max(score, self.max_score)
+            if score > self.max_score:
+                self.max_score = score
+                self.best_model = copy.deepcopy(model)
         if debug and DEBUG:
             print("growth in step {} is {}".format(step,self.avg_growth))
         if self.avg_growth < self.ratio:
             return True
         else:
             return False
+
+    def get_best_model(self):
+        return self.best_model
+class NoImprovement():
+    def __init__(self, max_step = 10):
+        self.max_step = max_step
+        self.max_score = None
+        self.step = 0
+        self.max_step_thresh = get_config("convergence_max_step")
+
+    def __call__(self, score, step, model):
+        assert isinstance(model, nn.Module)
+        if self.max_score is None:
+            self.max_score = score
+            self.step = 0
+            self.best_model = model
+        else:
+            if score > self.max_score:
+                self.max_score = score
+                self.best_model = copy.deepcopy(model)
+                self.step = 0
+            else:
+                self.step += 1
+        if debug and DEBUG:
+            print("no improvement in steps {}".format(self.step))
+        if self.step < self.max_step:
+            return False
+        else:
+            return True
+
+    def get_best_model(self):
+        return self.best_model
 
 class VanillaTrain(Task):
     def __init__(self,  granularity, evalulator:EvalBase, taskdata:MultiTaskDataTransform, task_prefix, **parameter:dict):
@@ -149,16 +184,19 @@ class VanillaTrain(Task):
                 self.compare_pairs[task_name] = self.taskdata.get_task_compare(task_name, order)
             step = 0
             if self.granularity == "converge":
-                self.converge = ConvergeImprovement(self.ipv_threshold)
+                self.converge = {}
+                for tn in self.tasks:
+                    self.converge[tn] = ConvergeImprovement(self.ipv_threshold)
             
                 while True:
                     if self.multi_task_flag == False:
                         self.curr_task_name = list(task2model.keys())[0]
-                        self.curr_model[self.curr_task_name] = self.model_process(self.curr_task_name, \
-                            self.curr_model[self.curr_task_name], order, step)
+                        ctn = self.curr_task_name
+                        self.curr_model[ctn] = self.model_process(ctn, \
+                            self.curr_model[ctn], order, step)
                         train_loop(self.curr_model, self.curr_train_data_loader)
-                        sc = self.perf_metric[self.curr_task_name](self.curr_model[task_name], self.curr_val_data_loader[task_name])                
-                        if self.converge(sc, step):
+                        sc = self.perf_metric[ctn](self.curr_model[ctn], self.curr_val_data_loader[ctn])                
+                        if self.converge[ctn](sc, step, self.curr_model[ctn]):
                             log("Task {} converges after {} steps".format(order, step))
                             break
                         if step > self.max_epoch:
@@ -166,6 +204,8 @@ class VanillaTrain(Task):
                             break
                     else:
                         assert False, "not Implemented"
+                for tn in self.tasks:
+                    self.curr_model[tn] = self.converge[tn].get_best_model()
             else:
                 assert False, "Implement other time slice definition"
             for task_name, model in self.curr_model.items():

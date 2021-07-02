@@ -140,3 +140,9 @@ def get_key_default(dct, key, default, range = None, type = None):
     if type is not None:
         assert isinstance(val, type), "Value {} is not Typr {}".format(val, type)
     return val
+
+def dict_index_range(dct, start, end):
+    lst = []
+    for i in range(start, end):
+        lst.append(dct[i])
+    return lst

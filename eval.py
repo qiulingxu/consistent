@@ -1,6 +1,7 @@
 from typing import Dict
 import torch as T
 import torch.nn as nn
+from torch.utils.data.dataset import Dataset
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Any, List, Dict, Tuple, Optional
@@ -41,7 +42,8 @@ class EvalProgressPerSample(EvalBase):
     def process_parameters(self,**karg):
         pass
 
-    def add_data(self, name:str, data:Iterable[Any], metric: nn.Module, batch_size:int,  **kargs):
+    def add_data(self, name:str, data:Dataset, metric: nn.Module, batch_size:int,  **kargs): #Iterable[Any]
+        assert isinstance(data, Dataset), type(data)
         fd = MBC_FD(batch_size=batch_size)
         fd.feed_data(data)
         self.add_fix_data(name, fd, metric, **kargs)

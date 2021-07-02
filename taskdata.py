@@ -2,13 +2,15 @@ import torch as T
 import torch.nn as nn
 from typing import List, Any, Dict, Tuple
 from torch.utils.data import random_split
+from torch.utils.data.dataset import ConcatDataset, Subset, Dataset
 from abc import ABC, abstractmethod
 import math
 import copy
 import random
 
+
 from .base import TaskDataTransform, EvalBase, MultiTaskDataTransform
-from .utils import assert_keys_in_dict, MAGIC, debug, log
+from .utils import assert_keys_in_dict, MAGIC, debug, log, dict_index_range
 from . import utils
 from . import task
 import numpy as np
@@ -47,7 +49,7 @@ class NoTask(TaskDataTransform):
 
 
 class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
-    def __init__(self, dataset, evaluator:EvalBase, metric:nn.Module, taskname:str = "Task",  **parameter):
+    def __init__(self, dataset:Dataset, evaluator:EvalBase, metric:nn.Module, taskname:str = "Task",  **parameter):
         self.dataset = dataset
         self.taskname = taskname
         self.parameter = parameter
@@ -89,20 +91,29 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
         elif fold == "val":
             return self.data_plan_val[order]
 
+    def merge_data(self):
+        for k in self.order:
+            self.data_plan[k] = ConcatDataset([self.data_plan_train[k], self.data_plan_test[k], self.data_plan_val[k]])
+
+
     def gen_data_plan(self):
         self.define_datafold()
         if self.do_shuffle:
             self.shuffle_data()
         self.data_plan = {}
+        self.data_plan_idx = {}
         for dpid, dp in enumerate(self.dataset):
             idx = self._assign_elem_id(dpid, dp)
-            if idx not in self.data_plan:
-                self.data_plan[idx] = []
-            self.data_plan[idx].append(dp)
+            if idx not in self.data_plan_idx:
+                self.data_plan_idx[idx] = []
+            self.data_plan_idx[idx].append(dpid)
+        for idx in self.data_plan_idx.keys():
+            self.data_plan[idx] = Subset(self.dataset, self.data_plan_idx[idx])
         self.define_order()
+        self.split_data()
         self.fill_evaluator(self.evaluator,"perslice_")
         self._post_process()
-        self.split_data()
+        self.merge_data()
         #for k in self.data_plan.keys():
         #    self.data_plan[k] = T.stack(self.data_plan[k],dim=0)
     def _post_process(self):
@@ -123,11 +134,12 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
 
 
     def _split_data(self,data):
-        split_num = copy.deepcopy(self.split_num)
-        for i in range(1, self.slices):
-            split_num[i] += split_num[i-1]
-        assert split_num[-1] == self.split_fold
+        #split_num = copy.deepcopy(self.split_num)
+        #for i in range(1, self.slices):
+        #    split_num[i] += split_num[i-1]
+        assert sum(self.split_num) == self.split_fold
         
+        """
         lsts = [[] for i in range(self.slices)]
         for idx, dp in enumerate(data):
             slice = idx%self.split_fold 
@@ -135,13 +147,22 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
                 if slice < split_num[i]:
                     lsts[i].append(dp)
                     break
-        return lsts
+        """
+        ldata = len(data)
+        tot_num = []
+        for psplit in self.split_num[:-1]:
+            tot_num.append(int(float(psplit)/ self.split_fold *ldata))
+        tot_num.append(ldata- sum(tot_num))
+         
+        lst_dataset = random_split(data, tot_num)
+        return lst_dataset
 
     def fill_evaluator(self, evaluator: EvalBase, prefix=""):
         for k in self.order:
             name = "{}_{}_{}_".format(prefix,self.taskname,str(k))
-            if len(self.data_plan[k]) >= 10:
-                test, val, train = self._split_data(self.data_plan[k])   
+            if len(self.data_plan_val[k]) >= 2:
+                #test, val, train = self._split_data(self.data_plan[k]) 
+                test, val, train = self.data_plan_test[k], self.data_plan_val[k], self.data_plan_train[k]
                 for suffix, data in (("test",test), ("val",val), ("train", train)):
                     evaluator.add_data(name+suffix, data, \
                         batch_size=self.batch_size, \
@@ -215,14 +236,14 @@ class SeqTaskNaiveData(SeqTaskData):
     def fill_evaluator(self, evaluator: EvalBase, prefix=""):
         k = self.order
         name = "{}_{}_{}_".format(prefix,self.taskname,str(k))
-        test, val, train = self._split_data(self.data_plan[k]) 
+        test, val, train = self.data_plan_test[k], self.data_plan_val[k], self.data_plan_train[k]
         
-        if self.l[k] >= 10:
-            for suffix, data in (("test",test), ("val",val), ("train", train)):
-                evaluator.add_data(name+suffix, data, \
-                    batch_size=self.batch_size, \
-                    order=self._define_order(k),
-                    metric = self.metric)    
+        #if self.l[k] >= 10:
+        for suffix, data in (("test",test), ("val",val), ("train", train)):
+            evaluator.add_data(name+suffix, data, \
+                batch_size=self.batch_size, \
+                order=self._define_order(k),
+                metric = self.metric)    
 
     def _define_order(self, k):
         if self.task_relation == "concurrent":
@@ -285,15 +306,7 @@ class IncrementalDomainClassificationData(ClassificationTaskData):
 
 
 class IncrementalDataClassificationData(ClassificationTaskData):
-    def _post_process(self):
-        print("Into IncrementalDataClassificationData post process")
-        self.comparison = []
-        for i in range(1,self.segments):
-            self.comparison.append((i-1, i))
-            self.data_plan[i].extend(self.data_plan[i-1])
-            if debug and DEBUG:
-                print(i,len(self.data_plan[i]))
-        self._remove_dup_classes()
+
 
     
     def _proc_parameter(self, parameter):
@@ -317,15 +330,26 @@ class IncrementalDataClassificationData(ClassificationTaskData):
 
 class SequentialOrder(ClassificationTaskData):
     def _post_process(self):
-        print("Into SequentialOrder post process")
+        print("Into IncrementalDataClassificationData post process")
         self.comparison = []
+        
+        def merge_data_plan(data_plan):
+            new_data_plan = {0:data_plan[0]}
+            for i in range(1,self.segments):
+                new_data_plan[i] = ConcatDataset(dict_index_range(data_plan, 0, i+1))
+                if debug and DEBUG:
+                    print(i,len(new_data_plan[i]))
+            return new_data_plan
+
         for i in range(1,self.segments):
             self.comparison.append((i-1, i))
-            self.data_plan[i].extend(self.data_plan[i-1])
-            #remove the duplicate items
-            self.task_classes[i] = self.task_classes[i-1] + self.task_classes[i]
-            if debug and DEBUG:
-                print(i,len(self.data_plan[i]))
+            
+            #self.data_plan[i].extend(self.data_plan[i-1])
+
+        self.data_plan_test = merge_data_plan(self.data_plan_test)
+        self.data_plan_val = merge_data_plan(self.data_plan_val)
+        self.data_plan_train = merge_data_plan(self.data_plan_train)
+        
         self._remove_dup_classes()
 
     def _define_order(self, k):
@@ -340,13 +364,20 @@ class ConcurrentOrder(ClassificationTaskData):
         self.combine_key = self.segments
         self.data_plan[self.combine_key] = []
         self.order.append(self.combine_key)
+        def merge_data_plan(data_plan):
+            new_data_plan = data_plan
+            new_data_plan[self.combine_key] = ConcatDataset(dict_index_range(self.data_plan, 0, self.segments+1))
+            if debug and DEBUG:
+                print(i,len(new_data_plan[self.combine_key]))
+            return new_data_plan        
         self.comparison = []
         for i in range(0,self.segments):
             self.comparison.append((i, self.combine_key))
-            self.data_plan[self.combine_key].extend(self.data_plan[i])
             self.task_classes[self.combine_key] += self.task_classes[i]
-            if debug and DEBUG:
-                print(i,len(self.data_plan[i]))            
+
+        self.data_plan_test = merge_data_plan(self.data_plan_test)
+        self.data_plan_val = merge_data_plan(self.data_plan_val)
+        self.data_plan_train = merge_data_plan(self.data_plan_train)
         self._remove_dup_classes()
 
     def _define_order(self, k):
