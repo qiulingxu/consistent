@@ -40,17 +40,20 @@ class ConvergeImprovement():
         self.avg_growth = 1000
         self.decay_rate = get_config("convergence_decay_rate")
 
+    def save_model(self, model):
+        self.best_state = copy.deepcopy(model.state_dict())
+
     def __call__(self, score, step, model):
         if self.max_score is None:
             self.max_score = score
             self.avg_growth = 1
-            self.best_model = model
+            self.save_model(model)
         else:
             improve_ratio = (score - self.max_score) / self.max_score
             self.avg_growth = self.avg_growth*self.decay_rate + improve_ratio * (1-self.decay_rate)
             if score > self.max_score:
                 self.max_score = score
-                self.best_model = copy.deepcopy(model)
+                self.save_model(model)
         if debug and DEBUG:
             print("growth in step {} is {}".format(step,self.avg_growth))
         if self.avg_growth < self.ratio:
@@ -58,8 +61,8 @@ class ConvergeImprovement():
         else:
             return False
 
-    def get_best_model(self):
-        return self.best_model
+    def restore_best_model(self, model:nn.Module):
+        model.load_state_dict(self.best_state)
 class NoImprovement():
     def __init__(self, max_step = 10):
         self.max_step = max_step
@@ -117,6 +120,8 @@ class VanillaTrain(Task):
             self.epoch = parameter["epoch"]
         else:
             assert False
+
+
 
     def get_name(self,):
         return "{}_vanilla_epoch{}_gran{}" .format(self.task_prefix, self.epoch, self.granularity)
@@ -205,7 +210,7 @@ class VanillaTrain(Task):
                     else:
                         assert False, "not Implemented"
                 for tn in self.tasks:
-                    self.curr_model[tn] = self.converge[tn].get_best_model()
+                    self.converge[tn].restore_best_model(self.curr_model[tn])
             else:
                 assert False, "Implement other time slice definition"
             for task_name, model in self.curr_model.items():

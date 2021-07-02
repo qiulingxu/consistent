@@ -10,12 +10,32 @@ import random
 
 
 from .base import TaskDataTransform, EvalBase, MultiTaskDataTransform
-from .utils import assert_keys_in_dict, MAGIC, debug, log, dict_index_range
+from .utils import assert_keys_in_dict, MAGIC, debug, log, dict_index_range, get_key_default
 from . import utils
 from . import task
 import numpy as np
 
 DEBUG = True
+
+class OverideTransformDataset(Dataset):
+    def __init__(self, dataset, transform):
+        self.dataset = dataset
+        self.transform = transform 
+
+    def __len__(self):
+        return self.dataset.__len__()
+
+    def __repr__(self):
+        return str(self.dataset)
+
+    def __getitem__(self, index: int) -> Tuple[Any, Any]:
+        img, target = self.dataset[index]
+        if self.transform is not None:
+            img = self.transform(img)
+        #if target_transform is not None:
+        #    target = target_transform(target)
+        return img, target
+
 
 class NoTask(TaskDataTransform):
     def __init__(self, dataset, evaluator:EvalBase, metric:nn.Module, **parameter):
@@ -56,6 +76,12 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
         self.evaluator = evaluator
         self.metric = metric
         self.do_shuffle = True
+        self.training_transform = get_key_default(parameter, "training_transform", None)
+        if self.training_transform:
+            print("using training transform {}".format(self.training_transform))
+        self.testing_transform = get_key_default(parameter, "testing_transform", None)
+        if self.testing_transform:
+            print("using testing transform {}".format(self.testing_transform))        
         self._proc_parameter(parameter)
         self.l = {}  #type: Dict[str, int]
         self.gen_data_plan()
@@ -128,10 +154,16 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
         for k in self.order:
             l = len(self.data_plan[k])
             self.l[k] = l
-            if l >= 10:
-                self.data_plan_test[k],self.data_plan_val[k],self.data_plan_train[k] \
-                    = self._split_data(self.data_plan[k])
+            #if l >= 10:
+            self.data_plan_test[k],self.data_plan_val[k],self.data_plan_train[k] \
+                = self._split_data(self.data_plan[k])
 
+            if self.training_transform is not None:
+                self.data_plan_train[k] = OverideTransformDataset(self.data_plan_train[k], self.training_transform)
+
+            if self.testing_transform is not None:
+                self.data_plan_test[k] = OverideTransformDataset(self.data_plan_test[k], self.testing_transform)
+                self.data_plan_val[k] = OverideTransformDataset(self.data_plan_val[k], self.testing_transform)
 
     def _split_data(self,data):
         #split_num = copy.deepcopy(self.split_num)
@@ -154,7 +186,8 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
             tot_num.append(int(float(psplit)/ self.split_fold *ldata))
         tot_num.append(ldata- sum(tot_num))
          
-        lst_dataset = random_split(data, tot_num)
+        lst_dataset = random_split(data, tot_num, generator=T.Generator().manual_seed(42))
+
         return lst_dataset
 
     def fill_evaluator(self, evaluator: EvalBase, prefix=""):
@@ -343,7 +376,7 @@ class SequentialOrder(ClassificationTaskData):
 
         for i in range(1,self.segments):
             self.comparison.append((i-1, i))
-            
+            self.task_classes[i] += self.task_classes[i-1]
             #self.data_plan[i].extend(self.data_plan[i-1])
 
         self.data_plan_test = merge_data_plan(self.data_plan_test)
@@ -446,3 +479,6 @@ class MultTaskSeqData(MultiTaskDataTransform):
             if compare_pair[-1] == order:
                 compare_pairs.append(compare_pair[0])  
         return compare_pairs
+
+
+
