@@ -6,7 +6,7 @@ def dataset_incremental_config():
     task = get_config_default("task","classification")
     dataset = get_config_default("dataset", "cifar10")
     converge_decay = get_config_default("convergence_decay_rate", 0.9)
-    converge_thresh = get_config_default("convergence_improvement_threshold", 1e-3)
+    converge_thresh = get_config_default("convergence_improvement_threshold", 1e-3)#1e-3)
     class_inc_mode = get_config_default("classification_model_process", "mask")
     classification_task = get_config_default("classification_task","domain_inc")
     develop_assumption = get_config_default("develop_assumption","sequential")

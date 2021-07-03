@@ -36,11 +36,14 @@ def ClassificationMask(cls):
             return labels
 
         def reset_head(self):
+            assert False
             with T.no_grad():
                 nn.init.xavier_uniform_(self.get_linear().weight)
 
         def process_output(self, output):
-            return T.index_select(output, dim=1, index=self.labels.to(output.device))
+            out = T.index_select(output, dim=1, index=self.labels.to(output.device))
+            assert list(out.size())[1] == len(self.labels)
+            return out
 
         def forward(self, x, full=False):
             ret = super().forward(x)

@@ -21,6 +21,7 @@ class EWC(nn.Module):
         sampler = RandomSampler(range(self.ld),replacement=True, num_samples=self.ld)
         self.dataloader = to_data_loader(dataset, batch_size=1, sampler=sampler, shuffle=False)
         self.softmax = nn.CrossEntropyLoss()
+        self.pseudo = True
 
     def set_model(self, model:nn.Module, var_lst):
         self.model = model
@@ -32,20 +33,23 @@ class EWC(nn.Module):
     def eval_fisher(self):
         #can only run offline
         precision_matrices = {}
-        for n, p in deepcopy(self.params).items():
-            p.data.zero_()
-            precision_matrices[n] = variable(p.data)
+        for n, p in self.params.items():
+            precision_matrices[n] = p.detach().clone().zero_()
         
         with PMW(self.model,False):
             with PFW(self.model,self.var_lst,True): 
                 for idx, (input, label) in enumerate(self.dataloader):
                     self.model.zero_grad()
-                    input = variable(input)
+                    input = input.cuda()
                     label = label.to(input.device)
                     output = self.model(input).view(1, -1)
-                    label = self.model.process_labels(label)
+                    if self.pseudo:
+                        _, label = output.max(1)
+                    else:
+                        label = self.model.process_labels(label)
                     #loss = F.nll_loss(F.log_softmax(output, dim=1), label)
                     loss = self.softmax(output, label)
+                    #loss = F.nll_loss(F.log_softmax(output, dim=1), label)
                     #print(loss)
                     assert not torch.isnan(loss).any(), "NAN" + str(loss)
                     loss.backward()

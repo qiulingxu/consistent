@@ -169,7 +169,7 @@ class VanillaTrain(Task):
             self.compare_pairs = {}
             #self.curr_model = {}
 
-            for task_name, model in task2model.items():
+            for task_name in self.tasks:
                 ### Process the data
                 self.perf_metric[task_name] = eval_score(self.taskdata.get_metric(task_name))
                 self.curr_train_data[task_name] = self.taskdata.get_task_data(task_name, order, "train")
@@ -220,6 +220,7 @@ class VanillaTrain(Task):
             if self.iscopy:
                 self.last_model = self.copy(self.curr_model)
             else:
+                assert False
                 self.last_model = self.curr_model
             for tn in self.tasks:
                 var_lst = freeze(self.last_model[tn])
