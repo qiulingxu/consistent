@@ -26,7 +26,7 @@ class EWC(nn.Module):
     def set_model(self, model:nn.Module, var_lst):
         self.model = model
         #print(model.named_parameters)"
-        self.var_lst = var_lst#[v for v in var_lst if v.find("linear")==-1 ]# #
+        self.var_lst = [v for v in var_lst if v.find("linear")==-1 ]#var_lst## #
         self.params = {n: p for n, p in model.named_parameters() if n in var_lst}
         #print("param",var_lst)
 

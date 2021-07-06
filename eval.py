@@ -204,6 +204,18 @@ class EvalProgressPerSample(EvalBase):
         self.curr_step = _measure["curr_step"]
         self.names = _measure["names"]
         self.hist_version = np.load(hist_file + ".npz")
+    
+    def set_order(self, option):
+        print(option)
+        assert option in ["sequential"]
+        
+        for k,v in self.orders.items():
+            _k = k[k.find("Task"):].split("_")
+            task_id = int(_k[1])
+            self.orders[k] = ("from", task_id)
+            #print(k,v)
+
+
     @abstractmethod
     def _define_acc(self, score: float) -> float:
         assert False
