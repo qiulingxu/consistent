@@ -60,12 +60,13 @@ class NoImprovement():
             self.min_score = score
             self.step = 0
             self.best_model = model
+            self.save_model(model)
         else:
             if (not self.small_better and score > self.max_score) or\
                 (self.small_better and score<self.min_score):
                 self.max_score = score
                 self.min_score = score
-                self.best_model = self.save_model(model)
+                self.save_model(model)
                 self.step = 0
             else:
                 self.step += 1

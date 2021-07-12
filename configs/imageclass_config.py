@@ -7,7 +7,7 @@ def dataset_incremental_config():
     dataset = get_config_default("dataset", "cifar10")
     converge_def = get_config_default("convergence_method", "max_step")
     assert converge_def in ["max_step", "rate"]
-    converge_step = get_config_default("convergence_improvement_max_step", 10)
+    converge_step = get_config_default("convergence_improvement_max_step", 20)
     converge_decay = get_config_default("convergence_decay_rate", 0.9)
     converge_thresh = get_config_default("convergence_improvement_threshold", 1e-3)#1e-3)
     class_inc_mode = get_config_default("classification_model_process", "mask")

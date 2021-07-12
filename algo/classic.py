@@ -20,10 +20,12 @@ def knowledge_distill_loss(full_output, prev_output, prev_model, x, Temp=2., mas
     output = prev_model.process_output(full_output)
     output =  F.log_softmax(output / Temp, dim=1)
     kd_loss =  T.sum(- prev_output * output, dim=1)
+    #print(prev_output.size(), output.size())
     if mask is None:
         kd_loss = T.mean(kd_loss) 
     else:
         kd_loss = T.sum(kd_loss*mask)/(T.sum(mask) + eps)
-    kd_loss *=  (Temp**2)
+    # whether to normalize
+    #kd_loss *=  (Temp**2)
     return kd_loss * beta
 

@@ -160,7 +160,7 @@ class VanillaTrain(Task):
                                 log("Task {} converges after {} steps".format(order, step))
                                 break
                         if self.ipv_max_step:
-                            loss = self.eval(self.curr_model, self.curr_train_data_loader,
+                            loss = self.eval(self.curr_model, self.curr_val_data_loader,
                                     prev_models=self.prev_models, **karg)
                             if self.converge[ctn](loss, step, self.curr_model[ctn]):
                                 log("Task {} converges after {} steps".format(order, step))
