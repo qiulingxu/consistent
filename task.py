@@ -6,12 +6,12 @@ import torch.nn as nn
 import copy
 from . import utils
 from .base import Task,TaskDataTransform,MultiTaskDataTransform, EvalBase
-from .utils import log, device, get_key_default, debug, freeze, PytorchModeWrap as PMW
+from .utils import get_config_default, log, device, get_key_default, debug, freeze, PytorchModeWrap as PMW
 from .net import ClassificationMask
 from .taskdata import ClassificationTaskData
 from .utils import get_config
 from .metric import eval_score
-
+from .converge import NoImprovement, ConvergeImprovement
 DEBUG = True
 
 def classifier_perf_metric(model, test_data):
@@ -33,65 +33,6 @@ def classifier_perf_metric(model, test_data):
 
 
 
-class ConvergeImprovement():
-    def __init__(self, ratio=1e-3):
-        self.ratio = ratio
-        self.max_score = None
-        self.avg_growth = 1000
-        self.decay_rate = get_config("convergence_decay_rate")
-
-    def save_model(self, model):
-        self.best_state = copy.deepcopy(model.state_dict())
-
-    def __call__(self, score, step, model):
-        if self.max_score is None:
-            self.max_score = score
-            self.avg_growth = 1
-            self.save_model(model)
-        else:
-            improve_ratio = (score - self.max_score) / self.max_score
-            self.avg_growth = self.avg_growth*self.decay_rate + improve_ratio * (1-self.decay_rate)
-            if score > self.max_score:
-                self.max_score = score
-                self.save_model(model)
-        if debug and DEBUG:
-            print("growth in step {} is {}".format(step,self.avg_growth))
-        if self.avg_growth < self.ratio:
-            return True
-        else:
-            return False
-
-    def restore_best_model(self, model:nn.Module):
-        model.load_state_dict(self.best_state)
-class NoImprovement():
-    def __init__(self, max_step = 10):
-        self.max_step = max_step
-        self.max_score = None
-        self.step = 0
-        self.max_step_thresh = get_config("convergence_max_step")
-
-    def __call__(self, score, step, model):
-        assert isinstance(model, nn.Module)
-        if self.max_score is None:
-            self.max_score = score
-            self.step = 0
-            self.best_model = model
-        else:
-            if score > self.max_score:
-                self.max_score = score
-                self.best_model = copy.deepcopy(model)
-                self.step = 0
-            else:
-                self.step += 1
-        if debug and DEBUG:
-            print("no improvement in steps {}".format(self.step))
-        if self.step < self.max_step:
-            return False
-        else:
-            return True
-
-    def get_best_model(self):
-        return self.best_model
 
 class VanillaTrain(Task):
     def __init__(self,  granularity, evalulator:EvalBase, taskdata:MultiTaskDataTransform, task_prefix, **parameter:dict):
@@ -103,7 +44,17 @@ class VanillaTrain(Task):
         self.multi_task_flag = True
         
         self.evaluator = evalulator
-        self.ipv_threshold = get_config("convergence_improvement_threshold")
+        if granularity == "converge":
+            # Two ways to definee  conveergence
+            converge_def = get_config("convergence_method")
+            if converge_def == "max_step":
+                self.ipv_max_step = get_config_default("convergence_improvement_max_step", False)
+                self.ipv_threshold = False
+            else:
+                self.ipv_max_step = False
+                self.ipv_threshold = get_config_default("convergence_improvement_threshold", False)
+            
+            assert not self.ipv_threshold or not self.ipv_max_step
         self.iscopy = get_key_default(parameter, "iscopy", True, type=bool)
         self.device = get_key_default(parameter, "device", device, type=str)
         self.max_epoch = 1e9
@@ -191,7 +142,10 @@ class VanillaTrain(Task):
             if self.granularity == "converge":
                 self.converge = {}
                 for tn in self.tasks:
-                    self.converge[tn] = ConvergeImprovement(self.ipv_threshold)
+                    if self.ipv_threshold:
+                        self.converge[tn] = ConvergeImprovement(self.ipv_threshold)
+                    if self.ipv_max_step:
+                        self.converge[tn] = NoImprovement(self.ipv_max_step, use_loss=True)
             
                 while True:
                     if self.multi_task_flag == False:
@@ -200,10 +154,17 @@ class VanillaTrain(Task):
                         self.curr_model[ctn] = self.model_process(ctn, \
                             self.curr_model[ctn], order, step)
                         train_loop(self.curr_model, self.curr_train_data_loader)
-                        sc = self.perf_metric[ctn](self.curr_model[ctn], self.curr_val_data_loader[ctn])                
-                        if self.converge[ctn](sc, step, self.curr_model[ctn]):
-                            log("Task {} converges after {} steps".format(order, step))
-                            break
+                        if self.ipv_threshold:
+                            sc = self.perf_metric[ctn](self.curr_model[ctn], self.curr_val_data_loader[ctn])                
+                            if self.converge[ctn](sc, step, self.curr_model[ctn]):
+                                log("Task {} converges after {} steps".format(order, step))
+                                break
+                        if self.ipv_max_step:
+                            loss = self.eval(self.curr_model, self.curr_train_data_loader,
+                                    prev_models=self.prev_models, **karg)
+                            if self.converge[ctn](loss, step, self.curr_model[ctn]):
+                                log("Task {} converges after {} steps".format(order, step))
+                                break
                         if step > self.max_epoch:
                             log("Task {} reaches max epochs after {} steps".format(order, step))
                             break
@@ -258,27 +219,39 @@ class VanillaTrain(Task):
             # Only one task is used here
             assert len(task2model) == 1
             task_name = list(task2model.keys())[0]
-            self._train_single(task2model[task_name], \
+            return self._train_single(task2model[task_name], \
                 dataset[task_name], \
                 prev_models[task_name], 
                 device=self.device, **karg)
         else:
             assert False, "Please implement it"
     
-    def eval(self, model, dataset, prev_models, **karg):
-        self._eval(model, dataset, prev_models, device=self.device, **karg)
+    def eval(self, task2model, dataset, prev_models, **karg):
+        if self.multi_task_flag == False:
+            # Only one task is used here
+            assert len(task2model) == 1
+            task_name = list(task2model.keys())[0]
+            return self._eval_single(task2model[task_name], \
+                dataset[task_name], \
+                prev_models[task_name], 
+                device=self.device, **karg)
+        else:
+            assert False, "Please implement it"
+            self._eval(model, dataset, prev_models, device=self.device, **karg)
 
     def _train_single(self, model, dataset, prev_models,  **karg):
         """ This function can be used for training single task with multiple stage. It bypass the multutask feature"""
         print("Please implement train single task function") 
-    
+
+    def _eval_single(self, model, dataset, prev_models,  **karg):
+        print("Please implement eval single task function") 
+
     def _train(self, task2model, dataset, prev_models,  **karg):
         print("Please implement train multi task function") 
 
     def _model_process(self, task_name, model: nn.Module, key, step):
         return model
 
-    @abstractmethod
     def _eval(self, model, dataset, prev_models,  **karg):
         pass
 

@@ -5,6 +5,9 @@ def dataset_incremental_config():
     ret = {}
     task = get_config_default("task","classification")
     dataset = get_config_default("dataset", "cifar10")
+    converge_def = get_config_default("convergence_method", "max_step")
+    assert converge_def in ["max_step", "rate"]
+    converge_step = get_config_default("convergence_improvement_max_step", 10)
     converge_decay = get_config_default("convergence_decay_rate", 0.9)
     converge_thresh = get_config_default("convergence_improvement_threshold", 1e-3)#1e-3)
     class_inc_mode = get_config_default("classification_model_process", "mask")
@@ -25,12 +28,16 @@ def dataset_incremental_config():
             taskdata = Seq_IData_CD
         else:
             taskdata = Con_IData_CD
-    full_name = "DS{}_CIM{}_CT{}_DA{}_CvgD{:.2e}_CvgT{:2e}_DomS{}".format(dataset,\
+    if converge_def == "max_step":
+        converge_name = "_CvgS{}".format(converge_step)
+    elif converge_def == "rate":
+        converge_name = "_CvgD{:.2e}_CvgT{:2e}".format(converge_decay,\
+                                                converge_thresh)
+    full_name = "DS{}_CIM{}_CT{}_DA{}{}_DomS{}".format(dataset,\
                                                 class_inc_mode,\
                                                 classification_task,\
                                                 develop_assumption,\
-                                                converge_decay,\
-                                                converge_thresh,\
+                                                converge_name,
                                                 domain_inc_parameter["segments"]
                                                 )
     set_config("full_name", full_name)
