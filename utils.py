@@ -146,3 +146,8 @@ def dict_index_range(dct, start, end):
     for i in range(start, end):
         lst.append(dct[i])
     return lst
+
+def repeat_dataloader(loader):
+    while True:
+        for idx, data in enumerate(loader):
+            yield data
