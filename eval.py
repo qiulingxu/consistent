@@ -24,6 +24,8 @@ def order_condition(step, order):
 
 EPS = 1e-5
 
+INCON_TOT_TYPE = "Correct"
+assert INCON_TOT_TYPE in ["Correct", "All"]
 class EvalProgressPerSample(EvalBase):
     def __init__(self, device, max_step = 50, **karg):
         super().__init__(device, max_step, **karg)
@@ -165,22 +167,24 @@ class EvalProgressPerSample(EvalBase):
         for name in names:
             hist = self.hist_version[name]
             length = self.len[name]
-            tot_cnt += length
+            #tot_cnt += length
             valid_step = self._get_valid_step(name)
             l_steps = len(valid_step)
             # altogether comparison
             for l in range(length):
-                f=None
+                prev=None
                 for j in range(l_steps):
                     step = valid_step[j]
-                    _h = hist[l, step]
-                    if f is None:
-                        f = _h
-                    elif f < _h:
+                    curr = hist[l, step]
+                    if prev is None:
+                        if INCON_TOT_TYPE == "Correct" and curr!= 1.0:
+                            break
+                        tot_cnt += 1
+                    elif prev > curr:
                         #print("sample %d" % i)
                         cnt += 1
                         break
-                    f = _h
+                    prev = curr
         rst = {"inconsist_tot":cnt*1.0/tot_cnt, "cnt":tot_cnt, "index":valid_step}
         return rst
 
