@@ -180,7 +180,7 @@ class EvalProgressPerSample(EvalBase):
                         if INCON_TOT_TYPE == "Correct" and curr!= 1.0:
                             break
                         tot_cnt += 1
-                    elif prev > curr:
+                    elif prev > curr + EPS:
                         #print("sample %d" % i)
                         cnt += 1
                         break

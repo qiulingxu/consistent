@@ -50,7 +50,7 @@ class VanillaTrain(Task):
             if converge_def == "max_step":
                 self.ipv_max_step = get_config_default("convergence_improvement_max_step", False)
                 self.ipv_threshold = False
-            else:
+            elif converge_def == "rate":
                 self.ipv_max_step = False
                 self.ipv_threshold = get_config_default("convergence_improvement_threshold", False)
             
