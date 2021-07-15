@@ -145,7 +145,7 @@ class VanillaTrain(Task):
                     if self.ipv_threshold:
                         self.converge[tn] = ConvergeImprovement(self.ipv_threshold)
                     if self.ipv_max_step:
-                        self.converge[tn] = NoImprovement(self.ipv_max_step, use_loss=True)
+                        self.converge[tn] = NoImprovement(self.ipv_max_step)#, use_loss=True)
             
                 while True:
                     if self.multi_task_flag == False:
@@ -160,9 +160,10 @@ class VanillaTrain(Task):
                                 log("Task {} converges after {} steps".format(order, step))
                                 break
                         if self.ipv_max_step:
-                            loss = self.eval(self.curr_model, self.curr_val_data_loader,
-                                    prev_models=self.prev_models, **karg)
-                            if self.converge[ctn](loss, step, self.curr_model[ctn]):
+                            #loss = self.eval(self.curr_model, self.curr_val_data_loader,
+                            #        prev_models=self.prev_models, **karg)
+                            sc = self.perf_metric[ctn](self.curr_model[ctn], self.curr_val_data_loader[ctn])  
+                            if self.converge[ctn](sc, step, self.curr_model[ctn]):
                                 log("Task {} converges after {} steps".format(order, step))
                                 break
                         if step > self.max_epoch:

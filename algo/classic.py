@@ -9,7 +9,7 @@ l2_loss = nn.MSELoss()
     In page 6, λo is a loss balance weight, set to 1"""
 eps = 1e-5
 
-def knowledge_distill_loss(full_output, prev_output, prev_model, x, Temp=2., mask=None):
+def knowledge_distill_loss(full_output, prev_output, prev_model,  Temp=2., mask=None):
     beta = get_config("lwf_lambda")
     #output = model(x, full=True)
     assert T.is_tensor(full_output)

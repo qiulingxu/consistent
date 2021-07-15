@@ -4,4 +4,4 @@ from .metric import MetricClassification
 from .task import VanillaTrain, ClassificationTrain
 from .taskdata import Seq_IDomain_CD, Con_IDomain_CD, Seq_IData_CD, Con_IData_CD
 from .net import ClassificationMask
-
+from .adv import FastGradientSign
