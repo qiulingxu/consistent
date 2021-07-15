@@ -5,7 +5,7 @@ def dataset_incremental_config():
     ret = {}
     task = get_config_default("task","classification")
     dataset = get_config_default("dataset", "cifar10")
-    converge_def = get_config_default("convergence_method", "rate")
+    converge_def = get_config_default("convergence_method", "max_step")
     assert converge_def in ["max_step", "rate"]
     converge_step = get_config_default("convergence_improvement_max_step", 40)
     converge_decay = get_config_default("convergence_decay_rate", 1.0)
