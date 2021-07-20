@@ -20,7 +20,7 @@ class eval_score(nn.Module):
         self.metric = metric
         assert self.metric.base_task in ["classifier"], "Please add others data processing"
     def forward(self, model:ClassificationModule, test_data):
-        model = model.to(device)
+        #model = model.to(device)
         with PMW(model, training = False):
             tot_sc = 0
             cnt = 0

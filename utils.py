@@ -87,6 +87,7 @@ def freeze(model: nn.Module):
 class PytorchModeWrap(object):
     def __init__(self, model :Union[nn.Module,Dict[str,nn.Module]], training):
         self.training = training
+        assert training in [True, False]
         self.model = model 
 
     def __enter__(self):
@@ -94,9 +95,11 @@ class PytorchModeWrap(object):
         if isinstance(self.model, dict):
             self.curr_mode = {}
             for k,m in self.model.items():
+                assert m.training in [True, False]
                 self.curr_mode[k] = m.training
                 m.train(self.training)
         else:
+            assert self.model.training in [True, False]
             self.curr_mode = self.model.training
             self.model.train(self.training)
         return self

@@ -250,6 +250,7 @@ class VanillaTrain(Task):
     def _train(self, task2model, dataset, prev_models,  **karg):
         print("Please implement train multi task function") 
 
+    @abstractmethod
     def _model_process(self, task_name, model: nn.Module, key, step):
         return model
 
@@ -262,10 +263,11 @@ class ClassificationTrain(VanillaTrain):
 
     def model_process(self, task_name:str, model: nn.Module, key:str, step:int): # type: ignore[override]
         if step == 0:
+            print("model processed at step {}".format(step))
             tp = get_config("classification_model_process")
             if tp.find("mask") >= 0:
                 model.sublabels(self.taskdata.tasks[task_name].task_classes[key])
-            if tp.find("reset") >= 0:
-                model.get_linear().reset_parameters()
+            #if tp.find("reset") >= 0:
+            #    model.get_linear().reset_parameters()
         return super().model_process(task_name, model, key, step)
     
