@@ -68,7 +68,8 @@ class VanillaTrain(Task):
             if "max_epoch" in parameter:
                 self.max_epoch = parameter["max_epoch"]
         elif self.granularity == "epoch":
-            self.epoch = parameter["epoch"]
+            #self.epoch = parameter["epoch"]
+            pass
         else:
             assert False
 
@@ -93,6 +94,8 @@ class VanillaTrain(Task):
             nonlocal step, tot_step
             if self.granularity == "converge":
                 karg["epoch"] = step
+            else:
+                karg["epoch"] = 0
             with PMW(task2model, training=True):
                 self.train(task2model = task2model, \
                         dataset=traindata, \
@@ -173,6 +176,13 @@ class VanillaTrain(Task):
                         assert False, "not Implemented"
                 for tn in self.tasks:
                     self.converge[tn].restore_best_model(self.curr_model[tn])
+            elif self.granularity == "epoch":
+                if self.multi_task_flag == False:
+                    self.curr_task_name = list(task2model.keys())[0]
+                    ctn = self.curr_task_name
+                    self.curr_model[ctn] = self.model_process(ctn, \
+                    self.curr_model[ctn], order, step)
+                    train_loop(self.curr_model, self.curr_train_data_loader)
             else:
                 assert False, "Implement other time slice definition"
             for task_name, model in self.curr_model.items():
@@ -182,7 +192,6 @@ class VanillaTrain(Task):
             if self.iscopy:
                 self.last_model = self.copy(self.curr_model)
             else:
-                assert False
                 self.last_model = self.curr_model
             for tn in self.tasks:
                 var_lst = freeze(self.last_model[tn])

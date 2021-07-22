@@ -8,7 +8,7 @@ import numpy as np
 MAGIC = 66
 
 def log(*argv, **karv):
-    print(*argv, **karv)
+    #print(*argv, **karv)
     logger.info(" ".join([str(_) for _ in argv]))
 
 def assert_keys_in_dict(keys, dct):
@@ -64,7 +64,10 @@ if "INIT_ONCE" not in globals():
     debug = True
     logging.basicConfig(filename='./logs/app.log', filemode='a', format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
     logger=logging.getLogger()
-    
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    # add the handler to the root logger
+    logging.getLogger('').addHandler(console)
     #set_dataset()
 
 def get_fixed_random_index(num, seed):
