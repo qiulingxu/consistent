@@ -187,7 +187,7 @@ class VanillaTrain(Task):
                 assert False, "Implement other time slice definition"
             for task_name, model in self.curr_model.items():
                 self.curr_model[task_name] = self.model_process(task_name, model, order, -1)
-            self.evaluator.eval(self.curr_model)    
+            self.evaluator.eval(self.process_model4eval(self.curr_model))    
             log("Measure",self.evaluator.measure())
             if self.iscopy:
                 self.last_model = self.copy(self.curr_model)
@@ -206,6 +206,9 @@ class VanillaTrain(Task):
                         dataset=self.curr_test_data_loader, \
                         prev_models=self.prev_models,\
                         **karg)"""
+    def process_model4eval(self, model):
+        return model
+
     def copy(self, models):
         return copy.deepcopy(models)
     #def converge(self, criterion):

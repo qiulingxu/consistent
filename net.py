@@ -54,7 +54,26 @@ def ClassificationMask(cls):
     return wrap_cls
 
 
+class AvgNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model_list = nn.ModuleList()
+        self.model_num = 0
+    def add_net(self, model:ClassificationModule):
+        self.model_num += 1
+        self.model_list.append(model)
+    def forward(self, x, full=False):
+        o = 0 
+        for i in range(self.model_num):
+            o += self.model_list[i](x, full=True)
+        o = o / self.model_num
+        if full:
+            return o
+        else:
+            return self.model_list[-1].process_output(o)
 
+    def process_labels(self, labels):
+        return self.model_list[-1].process_labels(labels)
 if __name__ == "__main__":
     class naive_nn(nn.Module):
         def __init__(self):
