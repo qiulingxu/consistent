@@ -123,6 +123,7 @@ class EvalProgressPerSample(EvalBase):
         rst["total_ic"] = self._measure(self.names)
         return rst
 
+
     def _get_valid_step(self, name):
         valid_step = []
         for i in range(0, self.curr_step):
@@ -217,14 +218,17 @@ class EvalProgressPerSample(EvalBase):
         self.names = _measure["names"]
         self.hist_version = np.load(hist_file + ".npz")
     
-    def set_order(self, option):
+    def set_order(self, option, val=None):
         print(option)
-        assert option in ["sequential"]
+        assert option in ["sequential", "set"]
         
         for k,v in self.orders.items():
             _k = k[k.find("Task"):].split("_")
             task_id = int(_k[1])
-            self.orders[k] = ("from", task_id)
+            if option == "sequential":
+                self.orders[k] = ("from", task_id)
+            else:
+                self.orders[k] = ("in", val)
             #print(k,v)
 
 
