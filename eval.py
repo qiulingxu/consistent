@@ -75,13 +75,17 @@ class EvalProgressPerSample(EvalBase):
                     assert False, "Find duplicate mathcing models {} and {} for task {}.".format(result, k, key)
         assert result is not None, "Find no mathcing models {} and {} for task {}.".format(result, k, key)
         return result
-    def eval(self, task2models):
+    def eval(self, task2models, step = None):
         """We have task name and dataseet names.
             the dataset name must contain exactly one task name to build correspondence
         """
+        if step is not None:
+            use_step = step 
+        else:
+            use_step = self.curr_step
         for name in self.names:
             key = self.find_match_model(task2models, name)
-            if order_condition(self.curr_step, self.orders[name]):
+            if order_condition(use_step, self.orders[name]):
                 if key is None:
                     assert False, "You specify a order {} but did not \
                         provide the model during evaluation {}".format(str(self.orders[name]),name) 
@@ -104,8 +108,12 @@ class EvalProgressPerSample(EvalBase):
                     # in batch idx
                     for ib_idx, e_idx in enumerate(idx):
                         e_idx = int(e_idx)
-                        self.hist_version[name][e_idx, self.curr_step] = score[ib_idx]
-        self.curr_step += 1
+                        self.hist_version[name][e_idx, use_step] = score[ib_idx]
+        if step is not None:
+            self.curr_step = max(self.curr_step, step+1)
+        else:
+            self.curr_step += 1
+    
     def measure(self):
         rst = {}
         for name in self.names:

@@ -111,6 +111,7 @@ class VanillaTrain(Task):
         for tn in self.tasks:
             self.prev_models[tn] = {}
         self.curr_model = task2model
+        self.last_model = None
         for order in self.taskdata.order:
             # These variables are for current time slice
             self.curr_order = order

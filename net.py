@@ -59,14 +59,18 @@ class AvgNet(nn.Module):
         super().__init__()
         self.model_list = nn.ModuleList()
         self.model_num = 0
-    def add_net(self, model:ClassificationModule):
+        self.weights = []
+    def add_net(self, model:ClassificationModule, weight=1.0):
         self.model_num += 1
         self.model_list.append(model)
+        self.weights.append(weight)
     def forward(self, x, full=False):
         o = 0 
+        tot = 0
         for i in range(self.model_num):
-            o += self.model_list[i](x, full=True)
-        o = o / self.model_num
+            o += self.model_list[i](x, full=True) * self.weights[i]
+            tot += self.weights[i]
+        o = o / tot
         if full:
             return o
         else:
