@@ -36,6 +36,7 @@ class EvalProgressPerSample(EvalBase):
         self.max_step = max_step
         self.curr_step = 0
         self.device = device
+        self.addtional_data = {}
         self.names: List[Any] = [] # type List[Any] 
         self.orders:Dict[Any, Tuple[str, Any]] =  {} # type 
 
@@ -63,6 +64,9 @@ class EvalProgressPerSample(EvalBase):
             self.orders[name] = ("from",0)
         else:
             self.orders[name] = order
+
+    def save_addition(self, key, data):
+        self.addtional_data[key] = data
 
     def find_match_model(self, models, key):
         ks = models.keys()
@@ -164,10 +168,14 @@ class EvalProgressPerSample(EvalBase):
             for compare_2 in range(compare_1+1, l_steps):
                 step_2 = valid_step[compare_2]
                 cnt = 0
+                tot_cnt = 0
                 for l in range(length):
+                    if INCON_TOT_TYPE == "Correct" and hist[l,step_1]!= 1.0:
+                        break
+                    tot_cnt += 1
                     if hist[l,step_1]>hist[l, step_2] + EPS:
                         cnt += 1
-                full_score.append({"compare": (step_1, step_2), "consistency": cnt * 1.0 / length})
+                full_score.append({"compare": (step_1, step_2), "consistency": tot_cnt * 1.0 / length})
         return {"inconsist_pairwise":full_score, "cnt":length, "index":valid_step}
 
     def _measure(self, names):
@@ -201,7 +209,7 @@ class EvalProgressPerSample(EvalBase):
         _js_file = filename + "_measure.json"
         hist_file = filename + "_hist.npy"
         _measure = self.measure()
-        _config = {"orders":self.orders, "len": self.len, "curr_step":self.curr_step, "names": self.names}
+        _config = {"orders":self.orders, "len": self.len, "curr_step":self.curr_step, "names": self.names,"add":self.addtional_data}
         _measure.update(_config)
         with open(_js_file, "w") as f:
             f.write(json.dumps(_measure))
@@ -216,6 +224,10 @@ class EvalProgressPerSample(EvalBase):
         self.len = _measure["len"]
         self.curr_step = _measure["curr_step"]
         self.names = _measure["names"]
+        if "add" in _measure:
+            self.addtional_data = _measure["add"]
+        else:
+            self.addtional_data = {}
         self.hist_version = np.load(hist_file + ".npz")
     
     def set_order(self, option, val=None):

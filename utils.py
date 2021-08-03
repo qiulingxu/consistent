@@ -26,6 +26,9 @@ def set_dataset():
     elif config["dataset"] == "cifar100":
         config["IMG_SIZE"] = (3, 32, 32)
         config["CLASS_NUM"] = 100
+    elif config["dataset"] == "imagenet32":
+        config["IMG_SIZE"] = (3, 32, 32)
+        config["CLASS_NUM"] = 1000
     elif config["dataset"] == "stl10":
         config["IMG_SIZE"] = (3, 96, 96)
         config["CLASS_NUM"] = 10

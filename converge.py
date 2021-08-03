@@ -16,15 +16,16 @@ class ConvergeImprovement():
         self.decay_rate = get_config("convergence_decay_rate")
         self.small_better = use_loss
 
-    def save_model(self, model):
+    def save_model(self, model, step):
         self.best_state = copy.deepcopy(model.state_dict())
+        self.save_step = step
 
     def __call__(self, score, step, model):
         if self.max_score is None:
             self.max_score = score
             self.min_score = score
             self.avg_growth = 1
-            self.save_model(model)
+            self.save_model(model, step)
         else:
             if self.small_better:
                 improve_ratio = (self.min_score - score) / self.max_score 
@@ -33,7 +34,7 @@ class ConvergeImprovement():
             self.avg_growth = self.avg_growth*self.decay_rate + improve_ratio * (1-self.decay_rate)
             if score > self.max_score:
                 self.max_score = score
-                self.save_model(model)
+                self.save_model(model, step)
             if score < self.min_score:
                 self.min_score = score
         if debug and DEBUG:
@@ -60,13 +61,13 @@ class NoImprovement():
             self.min_score = score
             self.step = 0
             self.best_model = model
-            self.save_model(model)
+            self.save_model(model, step)
         else:
             if (not self.small_better and score > self.max_score) or\
                 (self.small_better and score<self.min_score):
                 self.max_score = score
                 self.min_score = score
-                self.save_model(model)
+                self.save_model(model, step)
                 self.step = 0
             else:
                 self.step += 1
@@ -76,8 +77,9 @@ class NoImprovement():
             return False
         else:
             return True
-    def save_model(self, model):
+    def save_model(self, model, step):
         self.best_state = copy.deepcopy(model.state_dict())
+        self.save_step = step
 
     def restore_best_model(self, model:nn.Module):
         model.load_state_dict(self.best_state)

@@ -106,6 +106,7 @@ class VanillaTrain(Task):
 
         self.prev_models = {} # type: Dict[str, Dict[Any, nn.Module]]
         tot_step = 0
+        self.converge_step = []
         self.tasks = task2model.keys()
         self.pre_train()
         for tn in self.tasks:
@@ -177,6 +178,8 @@ class VanillaTrain(Task):
                         assert False, "not Implemented"
                 for tn in self.tasks:
                     self.converge[tn].restore_best_model(self.curr_model[tn])
+                self.converge_step.append(self.converge[ctn].save_step)
+                self.evaluator.save_addition("train_step", self.converge_step)
             elif self.granularity == "epoch":
                 if self.multi_task_flag == False:
                     self.curr_task_name = list(task2model.keys())[0]
@@ -188,8 +191,7 @@ class VanillaTrain(Task):
                 assert False, "Implement other time slice definition"
             for task_name, model in self.curr_model.items():
                 self.curr_model[task_name] = self.model_process(task_name, model, order, -1)
-            self.evaluator.eval(self.process_model4eval(self.curr_model))    
-            log("Measure",self.evaluator.measure())
+
             if self.iscopy:
                 self.last_model = self.copy(self.curr_model)
             else:
@@ -202,6 +204,8 @@ class VanillaTrain(Task):
                 else:
                     self.task_var[tn] = var_lst
                 self.prev_models[tn][order] = self.last_model[tn]
+            self.evaluator.eval(self.process_model4eval(self.last_model))    
+            log("Measure",self.evaluator.measure())                
             self.post_task()
             """self.eval(model=model,
                         dataset=self.curr_test_data_loader, \
@@ -216,6 +220,9 @@ class VanillaTrain(Task):
     #    return True
     def post_task(self):
         pass
+
+    def get_converge_step(self):
+        return self.converge_step
 
     def pre_train(self):
         pass

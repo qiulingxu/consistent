@@ -13,7 +13,7 @@ def dataset_incremental_config():
     class_inc_mode = get_config_default("classification_model_process", "mask")
     classification_task = get_config_default("classification_task","domain_inc")
     develop_assumption = get_config_default("develop_assumption","sequential")
-    domain_inc_parameter = {"segments":5,"batch_size":128}
+    domain_inc_parameter = {"segments":2,"batch_size":128}
     assert develop_assumption in ["sequential", "concurrent"]
     assert classification_task in ["domain_inc", "data_inc"]
     if classification_task == "domain_inc":
@@ -47,7 +47,7 @@ def dataset_incremental_config():
 
 def cifar10_incremental_config():
     dataset = get_config_default("dataset", "cifar10")
-    domain_inc_parameter = get_config_default("ic_parameter",{"segments":5,"batch_size":128})
+    domain_inc_parameter = get_config_default("ic_parameter",{"segments":2,"batch_size":128})
     return dataset_incremental_config()
 
 def cifar100_incremental_config():
@@ -55,11 +55,19 @@ def cifar100_incremental_config():
     domain_inc_parameter = get_config_default("ic_parameter",{"segments":20,"batch_size":128})
     return dataset_incremental_config()
 
+def imagenet32_incremental_config():
+    dataset = get_config_default("dataset", "imagenet32")
+    domain_inc_parameter = get_config_default("ic_parameter",{"segments":2,"batch_size":128})
+    get_config_default("convergence_improvement_max_step", 1000)
+    return dataset_incremental_config()
+
+
 def incremental_config(dataset):
     if dataset == "cifar10":
         return cifar10_incremental_config()
     elif dataset == "cifar100":
         return cifar100_incremental_config()
-    
+    elif dataset == "imagenet32":
+        return imagenet32_incremental_config()
     else:
         assert False
