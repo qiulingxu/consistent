@@ -113,8 +113,9 @@ class VanillaTrain(Task):
             self.prev_models[tn] = {}
         self.curr_model = task2model
         self.last_model = None
-        for order in self.taskdata.order:
+        for oid, order in enumerate(self.taskdata.order):
             # These variables are for current time slice
+            self.curr_order_index = oid
             self.curr_order = order
             self.curr_train_data = {}
             self.curr_test_data = {}

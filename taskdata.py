@@ -29,13 +29,33 @@ class OverideTransformDataset(Dataset):
         return str(self.dataset)
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
-        img, target = self.dataset[index]
+        #img, target 
+        lst = self.dataset[index]
+        img = lst[0]
         if self.transform is not None:
             img = self.transform(img)
+            lst[0] = img
         #if target_transform is not None:
         #    target = target_transform(target)
-        return img, target
+            
+        return lst
 
+class AddOutput(Dataset):
+    def __init__(self, dataset, add_func):
+        self.dataset = dataset
+        self.add_func = add_func
+
+    def __len__(self):
+        return self.dataset.__len__()
+
+    def __repr__(self):
+        return str(self.dataset)
+
+    def __getitem__(self, index: int) -> Tuple[Any, Any]:
+        lst = self.dataset[index]
+        assert isinstance(lst, list)
+        lst.append(self.add_func(lst))
+        return lst
 
 class NoTask(TaskDataTransform):
     def __init__(self, dataset, evaluator:EvalBase, metric:nn.Module, **parameter):
@@ -138,10 +158,15 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
         self.define_order()
         self.split_data()
         self.fill_evaluator(self.evaluator,"perslice_")
+        self._add_index()
         self._post_process()
         self.merge_data()
         #for k in self.data_plan.keys():
         #    self.data_plan[k] = T.stack(self.data_plan[k],dim=0)
+    def _add_index(self):
+        for idx, k in enumerate(self.order):
+            self.data_plan_train[k] = AddOutput(self.data_plan_train[k], add_func=lambda x,y: T.zeros(y) + idx )
+
     def _post_process(self):
         self.comparison = []
         for i in range(1, self.len()):
@@ -333,7 +358,8 @@ class ClassificationTaskData(SeqTaskData):
 
 class IncrementalDomainClassificationData(ClassificationTaskData):
     def _assign_elem_id(self, dpid,  dp):
-        _, label = dp
+        #_, label = dp
+        label = dp[1]
         return self.labelmap[label]
 
 
