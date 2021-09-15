@@ -68,6 +68,11 @@ class EvalProgressPerSample(EvalBase):
     def save_addition(self, key, data):
         self.addtional_data[key] = data
 
+    def add_addition(self, key, data):
+        if key not in self.addtional_data:
+            self.additional_data[key] = []
+        self.addtional_data.append(data)
+
     def find_match_model(self, models, key):
         ks = models.keys()
         result = None
@@ -170,12 +175,15 @@ class EvalProgressPerSample(EvalBase):
                 cnt = 0
                 tot_cnt = 0
                 for l in range(length):
+                    #if l<10:
+                    #    print(hist[l, step_1], hist[l, step_2])
                     if INCON_TOT_TYPE == "Correct" and hist[l,step_1]!= 1.0:
-                        break
+                        continue
                     tot_cnt += 1
                     if hist[l,step_1]>hist[l, step_2] + EPS:
                         cnt += 1
-                full_score.append({"compare": (step_1, step_2), "consistency": tot_cnt * 1.0 / length})
+                full_score.append({"compare": (step_1, step_2), "consistency": cnt * 1.0 / (tot_cnt)})
+                #print(full_score, tot_cnt, step_1, hist[l,step_1])
         return {"inconsist_pairwise":full_score, "cnt":length, "index":valid_step}
 
     def _measure(self, names):

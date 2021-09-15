@@ -33,6 +33,7 @@ class OverideTransformDataset(Dataset):
         lst = self.dataset[index]
         img = lst[0]
         if self.transform is not None:
+            lst = list(lst)
             img = self.transform(img)
             lst[0] = img
         #if target_transform is not None:
@@ -165,7 +166,7 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
         #    self.data_plan[k] = T.stack(self.data_plan[k],dim=0)
     def _add_index(self):
         for idx, k in enumerate(self.order):
-            self.data_plan_train[k] = AddOutput(self.data_plan_train[k], add_func=lambda x,y: T.zeros(y) + idx )
+            self.data_plan_train[k] = AddOutput(self.data_plan_train[k], add_func=lambda dp: idx )
 
     def _post_process(self):
         self.comparison = []

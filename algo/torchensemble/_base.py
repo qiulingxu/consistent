@@ -85,7 +85,7 @@ class BaseModule(nn.Module):
         self.use_scheduler_ = False
 
     def __getattr__(self, attr):
-        print("access",attr)
+        #print("access",attr)
         if attr in ["process_labels", "process_output", "sublabels"]:
             return getattr(self.base_estimator_,attr)
         else:

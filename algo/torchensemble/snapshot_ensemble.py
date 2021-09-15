@@ -15,6 +15,7 @@ import torch
 import logging
 import warnings
 import torch.nn as nn
+import torch as T
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import LambdaLR
 
@@ -86,6 +87,22 @@ def _snapshot_ensemble_model_doc(header, item="fit"):
 
     return adddoc
 
+
+
+def evaluate_uncertainty(model, dataloader):
+    model.eval()
+    cnt =0 
+    div = 0
+    with T.no_grad():
+        for x, y in dataloader:
+            x = x.cuda()
+            y= y.cuda()
+            ret = model._forward_sep(x)
+            ret = F.softmax(ret, dim=2)
+            m = T.mean(ret,dim=0,keepdim=True)
+            div += T.sum(T.mean(T.square(ret - m), dim=0, keepdim=True))
+            cnt += ret.size(1)
+    return div / cnt
 
 class _BaseSnapshotEnsemble(BaseModule):
     def __init__(
@@ -170,6 +187,10 @@ class _BaseSnapshotEnsemble(BaseModule):
 
         return output
 
+    def _forward_sep(self, *x):
+        results = [estimator(*x) for estimator in self.estimators_]
+        return T.stack(results, dim=0)
+
     def _clip_lr(self, optimizer, lr_clip):
         """Clip the learning rate of the optimizer according to `lr_clip`."""
         if not lr_clip:
@@ -238,6 +259,7 @@ class SnapshotEnsembleClassifier(_BaseSnapshotEnsemble, BaseClassifier):
         test_loader=None,
         save_model=True,
         save_dir=None,
+        loss_func = None,
     ):
         self._validate_parameters(lr_clip, epochs, log_interval)
         self.n_outputs = self._decide_n_outputs(train_loader)
@@ -262,7 +284,7 @@ class SnapshotEnsembleClassifier(_BaseSnapshotEnsemble, BaseClassifier):
         estimator.train()
         for epoch in range(epochs):
             for batch_idx, elem in enumerate(train_loader):
-
+                
                 data, target = io.split_data_target(elem, self.device)
                 batch_size = data[0].size(0)
 
@@ -270,8 +292,15 @@ class SnapshotEnsembleClassifier(_BaseSnapshotEnsemble, BaseClassifier):
                 optimizer = self._clip_lr(optimizer, lr_clip)
 
                 optimizer.zero_grad()
-                output = estimator(*data)
-                loss = criterion(output, target)
+                
+                if loss_func is None:
+                    output = estimator(data, target)
+                    loss = criterion(output, target)
+                else:
+                    oinputs, otargets, elemorder = elem
+                    oinputs = oinputs.cuda()
+                    otargets = otargets.cuda()
+                    loss, _, output, _ = loss_func(oinputs, otargets, elemorder, estimator, epoch)
                 loss.backward()
                 optimizer.step()
 
@@ -397,6 +426,7 @@ class SnapshotEnsembleRegressor(_BaseSnapshotEnsemble, BaseRegressor):
         test_loader=None,
         save_model=True,
         save_dir=None,
+        loss_func = None,
     ):
         self._validate_parameters(lr_clip, epochs, log_interval)
         self.n_outputs = self._decide_n_outputs(train_loader)
@@ -428,8 +458,11 @@ class SnapshotEnsembleRegressor(_BaseSnapshotEnsemble, BaseRegressor):
                 optimizer = self._clip_lr(optimizer, lr_clip)
 
                 optimizer.zero_grad()
-                output = estimator(*data)
-                loss = criterion(output, target)
+                if loss_func is None:
+                    output = estimator(*data)
+                    loss = criterion(output, target)
+                else:
+                    loss = loss_func(estimator, data[0], data[1], target)
                 loss.backward()
                 optimizer.step()
 
