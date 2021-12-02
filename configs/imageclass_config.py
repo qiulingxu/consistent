@@ -1,5 +1,5 @@
 from ..taskdata import Seq_IDomain_CD, Con_IDomain_CD, Seq_IData_CD, Con_IData_CD
-from ..utils import get_config_default, set_config, set_dataset
+from ..utils import get_config, get_config_default, set_config, set_dataset, get_key_default
 
 def dataset_incremental_config():
     ret = {}
@@ -7,6 +7,7 @@ def dataset_incremental_config():
     dataset = get_config_default("dataset", "cifar10")
     converge_def = get_config_default("convergence_method", "max_step")
     assert converge_def in ["max_step", "rate"]
+    occulusion = get_config_default("occulusion",False)
     converge_step = get_config_default("convergence_improvement_max_step", 40)
     converge_decay = get_config_default("convergence_decay_rate", 1.0)
     converge_thresh = get_config_default("convergence_improvement_threshold", 1e-3)#1e-3)
@@ -33,12 +34,20 @@ def dataset_incremental_config():
     elif converge_def == "rate":
         converge_name = "_CvgD{:.2e}_CvgT{:2e}".format(converge_decay,\
                                                 converge_thresh)
-    full_name = "DS{}_CIM{}_CT{}_DA{}{}_DomS{}".format(dataset,\
+
+    order_prob = get_key_default(domain_inc_parameter,"order_prob", None)
+    if order_prob is None:
+        order_prob = False
+    else:
+        order_prob = "_".join(["{:.2f}".format(i) for i in order_prob])
+    full_name = "DS{}_CIM{}_CT{}_DA{}{}_DomS{}_OP{}_OC{}".format(dataset,\
                                                 class_inc_mode,\
                                                 classification_task,\
                                                 develop_assumption,\
                                                 converge_name,
-                                                domain_inc_parameter["segments"]
+                                                domain_inc_parameter["segments"],
+                                                order_prob,
+                                                occulusion
                                                 )
     set_config("full_name", full_name)
     set_dataset()

@@ -87,7 +87,50 @@ def _snapshot_ensemble_model_doc(header, item="fit"):
 
     return adddoc
 
-
+def evaluate_uncertainty_part(prev_model, model, dataexpt, learnexpt, train_loader, val_loader, test_loader ):
+    """ datamode in train sample or expectation,
+        learnmode in empirical learning or expect learner
+    """
+    model.eval()
+    assert dataexpt in [True, False]
+    assert learnexpt in [True, False]
+    if dataexpt:
+        loader = train_loader
+    else:
+        loader = test_loader
+    if learnexpt:
+        def pred(ensemble_model, x, y, correct):
+            ret = ensemble_model._forward_sep(x)
+            ret = T.transpose(T.argmax(ret, dim=2), 0, 1)
+            acc = T.eq(ret, T.unsqueeze(y, -1))
+            prev_acc = T.unsqueeze(correct, -1)
+            consistency = T.sum(acc * prev_acc) / (T.sum(prev_acc) * acc.size(1) +1e-5)
+            return consistency
+    else:
+        def pred(ensemble_model, x, y, correct):
+            ret = ensemble_model.forward(x)
+            #ret = F.softmax(ret, dim=2)
+            ret = T.argmax(ret, dim=1)
+            acc = T.eq(ret, y)
+            consistency = T.sum(acc * correct) / (T.sum(correct) +1e-5)
+            return consistency            
+    with T.no_grad():
+        cnt = 0 
+        tot = 0
+        for data in loader:
+            if dataexpt:
+                x, y, _ = data
+            else:
+                x, y = data
+            x = x.cuda()
+            y= y.cuda()        
+            ret = prev_model.forward(x)
+            ret = T.argmax(ret, dim=1)
+            prev_acc = T.eq(ret, y)
+            c = pred(model, x, y, prev_acc)
+            tot += c * x.size(0)
+            cnt += x.size(0)
+    return tot / cnt
 
 def evaluate_uncertainty(model, dataloader):
     model.eval()
@@ -103,6 +146,28 @@ def evaluate_uncertainty(model, dataloader):
             div += T.sum(T.mean(T.square(ret - m), dim=0, keepdim=True))
             cnt += ret.size(1)
     return div / cnt
+
+
+def evaluate_consistency(model1, model2, dataloader):
+    model1.eval()
+    model2.eval()
+    cnt = 0 
+    consistent_sample = 0 
+    div = 0
+    with T.no_grad():
+        for x, y in dataloader:
+            x = x.cuda()
+            y= y.cuda()
+            ret1 = model1(x)
+            ret2 = model2(x)
+            assert len(ret1.size()) == 2
+            ret1 = T.argmax(ret1, dim=1)
+            ret2 = T.argmax(ret2, dim=1)
+            cnt_sample = ret1.eq(y)
+            cnt += cnt_sample.float().sum()
+            consistent_sample += T.logical_and(cnt_sample, ret1.eq(ret2)).float().sum()
+
+    return consistent_sample * 1.0 / cnt
 
 class _BaseSnapshotEnsemble(BaseModule):
     def __init__(
@@ -284,9 +349,9 @@ class SnapshotEnsembleClassifier(_BaseSnapshotEnsemble, BaseClassifier):
         estimator.train()
         for epoch in range(epochs):
             for batch_idx, elem in enumerate(train_loader):
-                
-                data, target = io.split_data_target(elem, self.device)
-                batch_size = data[0].size(0)
+                oinputs, otargets, elemorder = elem
+                #data, target = io.split_data_target(elem, self.device)
+                batch_size = oinputs.size(0)
 
                 # Clip the learning rate
                 optimizer = self._clip_lr(optimizer, lr_clip)
@@ -294,10 +359,9 @@ class SnapshotEnsembleClassifier(_BaseSnapshotEnsemble, BaseClassifier):
                 optimizer.zero_grad()
                 
                 if loss_func is None:
-                    output = estimator(data, target)
-                    loss = criterion(output, target)
+                    output = estimator(oinputs, otargets)
+                    loss = criterion(output, otargets)
                 else:
-                    oinputs, otargets, elemorder = elem
                     oinputs = oinputs.cuda()
                     otargets = otargets.cuda()
                     loss, _, output, _ = loss_func(oinputs, otargets, elemorder, estimator, epoch)
@@ -308,7 +372,7 @@ class SnapshotEnsembleClassifier(_BaseSnapshotEnsemble, BaseClassifier):
                 if batch_idx % log_interval == 0:
                     with torch.no_grad():
                         _, predicted = torch.max(output.data, 1)
-                        correct = (predicted == target).sum().item()
+                        correct = (predicted == otargets).sum().item()
 
                         msg = (
                             "lr: {:.5f} | Epoch: {:03d} | Batch: {:03d} |"
@@ -331,7 +395,8 @@ class SnapshotEnsembleClassifier(_BaseSnapshotEnsemble, BaseClassifier):
                                 total_iters,
                             )
                         else:
-                            print("None")
+                            pass
+                            #print("None")
 
                 # Snapshot ensemble updates the learning rate per iteration
                 # instead of per epoch.
@@ -453,7 +518,7 @@ class SnapshotEnsembleRegressor(_BaseSnapshotEnsemble, BaseRegressor):
             for batch_idx, elem in enumerate(train_loader):
 
                 data, target = io.split_data_target(elem, self.device)
-
+                assert False, "elem has been changed to contain 3 parts, fix the following code"
                 # Clip the learning rate
                 optimizer = self._clip_lr(optimizer, lr_clip)
 

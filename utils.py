@@ -78,10 +78,12 @@ def get_fixed_random_index(num, seed):
     shuffle = np.random.permutation(num)
     return shuffle
 
-def get_fixed_random_generator(num, seed):
+def get_fixed_random_generator(num, seed, prob=None):
     np.random.seed(seed)
+    l = list(range(num))
     while True:
-        yield np.random.randint(num)
+        yield np.random.choice(l,p=prob)
+        #np.random.randint(num)
 
 def freeze(model: nn.Module):
     var_list =[] 

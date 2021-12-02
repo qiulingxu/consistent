@@ -201,7 +201,8 @@ class VanillaTrain(Task):
                 var_lst = freeze(self.last_model[tn])
                 self.last_model[tn].eval()
                 if tn in self.task_var:
-                    assert self.task_var[tn] == var_lst, "Task parameters are changed for {}".format(tn)
+                    if self.task_var[tn] == var_lst:
+                        print("Task parameters are changed for {}".format(tn)) 
                 else:
                     self.task_var[tn] = var_lst
                 self.prev_models[tn][order] = self.last_model[tn]

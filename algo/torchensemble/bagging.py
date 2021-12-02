@@ -34,6 +34,7 @@ def _parallel_fit_per_epoch(
     log_interval,
     device,
     is_classification,
+    loss_func = None,
 ):
     """
     Private function used to fit base estimators in parallel.
@@ -47,8 +48,10 @@ def _parallel_fit_per_epoch(
 
     for batch_idx, elem in enumerate(train_loader):
 
-        data, target = io.split_data_target(elem, device)
-        batch_size = data[0].size(0)
+        #data, target = io.split_data_target(elem, device)
+        oinputs, otargets, elemorder = elem
+        #output = _forward(estimators, *data)
+        batch_size = oinputs.size(0)
 
         # Sampling with replacement
         sampling_mask = torch.randint(
@@ -56,12 +59,21 @@ def _parallel_fit_per_epoch(
         )
         sampling_mask = torch.unique(sampling_mask)  # remove duplicates
         subsample_size = sampling_mask.size(0)
-        sampling_data = [tensor[sampling_mask] for tensor in data]
-        sampling_target = target[sampling_mask]
+        sampling_data = oinputs[sampling_mask]
+        sampling_target = otargets[sampling_mask]
+        sampling_elem = elemorder[sampling_mask]
 
         optimizer.zero_grad()
-        sampling_output = estimator(*sampling_data)
-        loss = criterion(sampling_output, sampling_target)
+        if loss_func is None:
+            sampling_output = estimator(sampling_data)
+            loss = criterion(sampling_output,  sampling_target)
+        else:
+            sampling_data = sampling_data.cuda()
+            sampling_target = sampling_target.cuda()
+            sampling_elem = sampling_elem.cuda()
+            loss, _, sampling_output, _ = loss_func(sampling_data, sampling_target, sampling_elem, estimator, epoch)
+        #sampling_output = estimator(*sampling_data)
+        #loss = criterion(sampling_output, sampling_target)
         loss.backward()
         optimizer.step()
 
@@ -109,6 +121,10 @@ class BaggingClassifier(BaseClassifier):
 
         return proba
 
+    def _forward_sep(self, *x):
+        results = [estimator(*x) for estimator in self.estimators_]
+        return torch.stack(results, dim=0)
+
     @torchensemble_model_doc(
         """Set the attributes on optimizer for BaggingClassifier.""",
         "set_optimizer",
@@ -134,6 +150,7 @@ class BaggingClassifier(BaseClassifier):
         test_loader=None,
         save_model=True,
         save_dir=None,
+        loss_func=None,
     ):
 
         self._validate_parameters(epochs, log_interval)
@@ -198,6 +215,7 @@ class BaggingClassifier(BaseClassifier):
                         log_interval,
                         self.device,
                         True,
+                        loss_func
                     )
                     for idx, (estimator, optimizer) in enumerate(
                         zip(estimators, optimizers)
@@ -219,7 +237,9 @@ class BaggingClassifier(BaseClassifier):
                             data, target = io.split_data_target(
                                 elem, self.device
                             )
+                            #oinputs, otargets, elemorder = elem
                             output = _forward(estimators, *data)
+                            #output = _forward(estimators, oinputs)
                             _, predicted = torch.max(output.data, 1)
                             correct += (predicted == target).sum().item()
                             total += target.size(0)

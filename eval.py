@@ -70,8 +70,8 @@ class EvalProgressPerSample(EvalBase):
 
     def add_addition(self, key, data):
         if key not in self.addtional_data:
-            self.additional_data[key] = []
-        self.addtional_data.append(data)
+            self.addtional_data[key] = []
+        self.addtional_data[key].append(data)
 
     def find_match_model(self, models, key):
         ks = models.keys()
@@ -224,6 +224,7 @@ class EvalProgressPerSample(EvalBase):
         np.savez(hist_file,**self.hist_version)
     
     def load(self,filename):
+        self.filename = filename
         _js_file = filename + "_measure.json"
         hist_file = filename + "_hist.npy"
         with open(_js_file, "r") as f:

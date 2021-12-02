@@ -13,6 +13,7 @@ from .base import TaskDataTransform, EvalBase, MultiTaskDataTransform
 from .utils import assert_keys_in_dict, MAGIC, debug, log, dict_index_range, get_key_default
 from . import utils
 from . import task
+from .utils import get_config
 import numpy as np
 
 DEBUG = True
@@ -40,6 +41,8 @@ class OverideTransformDataset(Dataset):
         #    target = target_transform(target)
             
         return lst
+
+
 
 class AddOutput(Dataset):
     def __init__(self, dataset, add_func):
@@ -87,7 +90,30 @@ class NoTask(TaskDataTransform):
     def get_full_data(self,):
         return []
 
-
+class occulusion(T.nn.Module):
+    def __init__(self, tid, total):
+        super().__init__()
+        assert total in [2,4]
+        img_sz = get_config("IMG_SIZE")
+        if total == 2:
+            self.conf = [(img_sz[1]//2, img_sz[1], 0, img_sz[2]),
+                        (0, img_sz[1]//2, 0, img_sz[2]),]
+        elif total == 4:
+            self.conf = [(img_sz[1]//2, img_sz[1], 0, img_sz[2] // 2),
+                        (img_sz[1]//2, img_sz[1], img_sz[2] // 2, img_sz[2]),
+                        (0, img_sz[1]//2, 0, img_sz[2]//2),
+                        (0, img_sz[1]//2, img_sz[2]//2, img_sz[2]), ]
+        self.total = total
+        self.tid = tid
+        self.conf = self.conf[tid]
+    def forward(self, img):
+        if len(img.shape) == 3:
+            img[:, self.conf[0]:self.conf[1], self.conf[2]:self.conf[3]].fill_(0.)
+        elif len(img.shape) ==4:
+            img[:, :, self.conf[0]:self.conf[1], self.conf[2]:self.conf[3]].fill_(0.)
+        return img
+    def __repr__(self):
+        return "Occulusion_{}_{}".format(self.total, self.tid)
 
 class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
     def __init__(self, dataset:Dataset, evaluator:EvalBase, metric:nn.Module, taskname:str = "Task",  **parameter):
@@ -190,7 +216,11 @@ class SeqTaskData(TaskDataTransform, MultiTaskDataTransform):
             if self.testing_transform is not None:
                 self.data_plan_test[k] = OverideTransformDataset(self.data_plan_test[k], self.testing_transform)
                 self.data_plan_val[k] = OverideTransformDataset(self.data_plan_val[k], self.testing_transform)
-
+            if get_config("occulusion"):
+                oc_transform = occulusion(int(k), len(self.order)) 
+                self.data_plan_train[k] = OverideTransformDataset(self.data_plan_train[k], oc_transform)
+                self.data_plan_val[k] = OverideTransformDataset(self.data_plan_val[k], oc_transform)
+                self.data_plan_test[k] = OverideTransformDataset(self.data_plan_test[k], oc_transform)
     def _split_data(self,data):
         #split_num = copy.deepcopy(self.split_num)
         #for i in range(1, self.slices):
@@ -374,7 +404,10 @@ class IncrementalDataClassificationData(ClassificationTaskData):
         assert_keys_in_dict(["segments", "segment_random_seed"], parameter)
         self.segments = parameter["segments"]
         class_num = utils.config["CLASS_NUM"]
-        self.elem_id_gen = utils.get_fixed_random_generator(num= self.segments, seed=parameter["segment_random_seed"])
+        self.order_prob = get_key_default(parameter, "order_prob", None)
+        if self.order_prob is not None:
+            assert len(self.order_prob) == self.segments
+        self.elem_id_gen = utils.get_fixed_random_generator(num= self.segments, seed=parameter["segment_random_seed"], prob= self.order_prob)
         parameter["task_classes"] = {i:list(range(class_num)) for i in range(self.segments)}
         super()._proc_parameter(parameter)
 

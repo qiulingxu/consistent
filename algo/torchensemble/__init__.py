@@ -6,7 +6,7 @@ from .bagging import BaggingClassifier
 from .bagging import BaggingRegressor
 from .gradient_boosting import GradientBoostingClassifier
 from .gradient_boosting import GradientBoostingRegressor
-from .snapshot_ensemble import SnapshotEnsembleClassifier, evaluate_uncertainty
+from .snapshot_ensemble import SnapshotEnsembleClassifier,evaluate_uncertainty_part, evaluate_uncertainty, evaluate_consistency
 from .snapshot_ensemble import SnapshotEnsembleRegressor
 from .adversarial_training import AdversarialTrainingClassifier
 from .adversarial_training import AdversarialTrainingRegressor
