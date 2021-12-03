@@ -61,7 +61,7 @@ def cifar10_incremental_config():
 
 def cifar100_incremental_config():
     dataset = get_config_default("dataset", "cifar100")
-    domain_inc_parameter = get_config_default("ic_parameter",{"segments":20,"batch_size":128})
+    domain_inc_parameter = get_config_default("ic_parameter",{"segments":2,"batch_size":128})
     return dataset_incremental_config()
 
 def imagenet32_incremental_config():
